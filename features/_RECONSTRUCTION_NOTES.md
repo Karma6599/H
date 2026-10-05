@@ -46,6 +46,12 @@ header during reconstruction and are preserved in the git history of this repo
   readability; the mapping to the original bytecode hashes is preserved
   below and must be used when cross-referencing other modules (the same
   hashes recur across the bundle).
+- `allyrespawn.js` — COMPLETE (shared visual runtime fn_888/fn_2368 widget trio,
+  scheduler-driven 120 ms tick, per-entity deadline Map, no hash keys).
+- `antiafk.js` — COMPLETE (fn_2488 battle input runtime, anti-afk branch);
+  all `_$hash` keys renamed to recovered/positional names — see the full
+  offsets map below. Unattributed slots (13/14/15/25, plus behavior-named
+  gates) carry positional names and are documented with their evidence level.
 
 ## Hash → name map (autospin)
 
@@ -226,16 +232,43 @@ fn_1806→fn_2743(41564), fn_1875→fn_1826(36748).
 | `_$6ff76fd71ed8749d4b126f55` | alloc | offsets object (reconfirmed) |
 | `_$a0ecdfeb91f25b0091d3e509` | free | offsets object (reconfirmed) |
 
-Battle input runtime (fn_2488) offsets object key order (Object.values indices):
-0 mode, 1 screen, 2 own, 3 x, 4 y, 5 data, 6 move, 7 input, 8 submit, 9 alloc,
-10 free, 11 fire, 12 `_$ffbd8f1f343d7bcfdf56c231` (goal/hold hook), 13 `_$d822d590a1067e5a255382d1`,
-14 `_$01e31636f1888bf1817d00ff`, 15 `_$53241e273efd49bf18d0164f`,
-**16 `_$1e1d1a0ea4a2176a2e52e360` (inactivity check — anti-afk Interceptor target)**,
-17 `_$86ba4058ce7a7757d0d790db`, 18 `_$0577fe14f99e51f5b1eb4c9d`,
-19 `_$c1471263b0d1e96e43128436`, 20 `_$05f14d4afd6ecbf8df7884b1`,
-21 `_$abdd3d86d875b8cdaa3016e9`, 22 `_$095e11e0707dccd52138c65d`,
-23 `_$598ce79000ea943bbfe4c64b`, 24 `_$a5f41b3a1a01395ef3cf2563`,
-25 `_$0fceef48d031fbd184e4369a`.
+Battle input runtime (fn_2488) offsets object — full hash → name map
+(Object.values indices; fn_488 frozen object, keys verified against consumers):
+
+| idx | hash | name | evidence |
+|---|---|---|---|
+| 8 | `_$c4a008b45f098e9c9a99c679` | `submit` | fn_1139 getNative(8,'void'); same key in autospin + entity tables |
+| 9 | `_$6ff76fd71ed8749d4b126f55` | `alloc` | fn_1139 getNative(9,'pointer',['ulong']) |
+| 10 | `_$a0ecdfeb91f25b0091d3e509` | `free` | fn_1139 getNative(10,'void') ×3 |
+| 12 | `_$ffbd8f1f343d7bcfdf56c231` | `activateWeapon` | VERIFIED: same fn_488 local 122 resolves with label 'activate weapon' in fn_2617 (aimbot); fn_1572 attachHook(12, state[goal]||state[hold_to_shoot], {onEnter: fn_1754}); fn_2803 calls it as 7-arg native (ptr,int,int,ptr,ptr,int,int)→int; fn_1754 rewrites args[1]/args[2]/args[5]/args[6] (aim redirect) |
+| 13 | `_$d822d590a1067e5a255382d1` | `native13` | no consumer in any reconstructed tree (also entity-table key + aim array [2]); positional name |
+| 14 | `_$01e31636f1888bf1817d00ff` | `native14` | no consumer (aim array [3]; entity table uses same VALUE under `_$f0cfe3c418d3ef67623fc7d6`; fn_2461 payload key of same name holds an {x,y} point); positional name |
+| 15 | `_$53241e273efd49bf18d0164f` | `native15` | no consumer (aim array [4]); positional name |
+| 16 | `_$1e1d1a0ea4a2176a2e52e360` | `inactivityCheck` | VERIFIED: fn_1572 attachHook(16, state[anti_afk=14], {onLeave: fn_2818}); fn_2818 forces retval 0 |
+| 17 | `_$86ba4058ce7a7757d0d790db` | `aimX` | VERIFIED: fn_488 loc 2090 = aim offsets array [5]; fn_107 (aimbot commit) does handle.add(AIM[5]).writeS32(shot.x) (idx const 2049=5); fn_2803 .add(VALUES[17]).readS32()/writeS32(x); ball runtime fn_2230/fn_1919 read entity values[22] |
+| 18 | `_$0577fe14f99e51f5b1eb4c9d` | `aimY` | VERIFIED: fn_488 loc 1298 = aim array [6]; fn_107 handle.add(AIM[6]).writeS32(shot.y) (idx const 1332=6); fn_2803 .add(VALUES[18]).readS32()/writeS32(y) |
+| 19 | `_$c1471263b0d1e96e43128436` | `packedPosition` | fn_2803 getNative(19,'uint64',['pointer','pointer','pointer']); result .toString(16).padStart(16) split into x (low 32) / y (high 32) |
+| 20 | `_$05f14d4afd6ecbf8df7884b1` | `ctxGate` | fn_2803 getNative(20,'int',['pointer']) — required gate on the same ctx as packedPosition's 3rd arg |
+| 21 | `_$abdd3d86d875b8cdaa3016e9` | `ctxGateAlt` | fn_2803 getNative(21,'int',['pointer']) — first alternative gate |
+| 22 | `_$095e11e0707dccd52138c65d` | `ctxGateFallback` | fn_2803 getNative(22,'int',['pointer']) — second alternative gate (21 || 22) |
+| 23 | `_$598ce79000ea943bbfe4c64b` | `cellIndex` | fn_2803 getNative(23,'int',['pointer']) — reads index from the entity array element |
+| 24 | `_$a5f41b3a1a01395ef3cf2563` | `cellOffset` | fn_2803 getNative(24,'int',['int']) — index→coordinate offset: x = x(ptr) + native24(idx+90), y = y(ptr) + native24(idx) |
+| 25 | `_$0fceef48d031fbd184e4369a` | `native25` | no consumer (value = cfg[513], breaks the cfg[717-721] run of 20-24); positional name |
+
+Plain-atom keys (unhashed in the bytecode, kept verbatim): 0 mode, 1 screen,
+2 own, 3 x, 4 y, 5 data, 6 move, 7 input, 11 fire.
+Reads via fn_1006 getNative: 0 ('pointer',[]) — returns root ptr; 2 ('pointer',['pointer']);
+3/4 ('int',['pointer']) coordinate getters; 6 ('pointer',…) fn_2037; 7 ('pointer',…) fn_1139.
+Slots 1/5/11/13/14/15/25 have no reader inside the fn_2488 subtree (shared pool:
+the same values reappear in the entity-side frozen object — fn_488 loc 1661 —
+consumed by fn_109 via Object.values(...).concat([screen]) — and in the aim
+offsets array — fn_488 loc 1891 = freeze([fire, activateWeapon, 13, 14, 15,
+aimX, aimY, +3 more]), only [1] activateWeapon is read by fn_2617).
+Related extra natives outside the offsets table, resolved by literal label:
+'gadget readiness' (cfg slot → natives cache 26, fn_2598), 'use gadget'
+(→ cache 27, fn_2598), killaura hook target = cfg[726] resolved directly by
+fn_2754 (Interceptor.attach with onEnter fn_552). fn_2317 warmup labels are
+built as 'Battle ' + Object.keys(OFFSETS)[index].
 
 ## anti_afk (features/antiafk.js)
 

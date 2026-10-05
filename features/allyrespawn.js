@@ -84,7 +84,7 @@ function createAllyRespawn(deps, logger) {
   let lastError = null;
 
   const log = typeof logger === 'function' ? logger : () => {};
-  const scheduler = deps._$316a295be826abbc8b0c29da;
+  const scheduler = deps.scheduler;
 
   function isRuntimeActive() {
     return !disposed;
