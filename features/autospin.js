@@ -21,8 +21,8 @@ function createAutoSpin(deps, logger) {
     logger = { log: logger };
   }
   const log = logger.log;
-  const inputGate = logger['_$0f5ca3bf508eb8602288884d'];
-  const scheduler = logger['_$316a295be826abbc8b0c29da'];
+  const inputGate = logger.inputGate;
+  const scheduler = logger.scheduler;
 
   deps = normalizeDeps(deps);
 
@@ -34,9 +34,9 @@ function createAutoSpin(deps, logger) {
     new NativeFunction(deps.add(offset), retType, argTypes);
 
   const nativeAlloc = new NativeFunction(
-    deps.add(offsets['_$6ff76fd71ed8749d4b126f55']), 'pointer', ['ulong']);
+    deps.add(offsets.alloc), 'pointer', ['ulong']);
   const nativeFree = new NativeFunction(
-    deps.add(offsets['_$a0ecdfeb91f25b0091d3e509']), 'void', ['pointer']);
+    deps.add(offsets.free), 'void', ['pointer']);
 
   const getBattleNative = makeNative(offsets.battle, 'pointer', []);
   const getScreenNative = makeNative(offsets.screen, 'pointer', []);
@@ -47,7 +47,7 @@ function createAutoSpin(deps, logger) {
   const moveNative      = makeNative(offsets.move,    'pointer',
                                      ['pointer', 'int', 'int', 'int']);
   const inputNative     = makeNative(offsets.input,   'pointer', ['pointer', 'int']);
-  const submitNative    = makeNative(offsets['_$c4a008b45f098e9c9a99c679'],
+  const submitNative    = makeNative(offsets.submit,
                                      'void', ['pointer', 'pointer']);
 
   const STRUCT_BATTLE_ACTOR = STRUCT_ROOT_TO_ACTOR;
@@ -142,18 +142,18 @@ function createAutoSpin(deps, logger) {
   }
 
   function isInputLocked() {
-    if (inputGate && inputGate['_$6c469dfb2ddb1688dfd11754']) {
-      return !!inputGate['_$6c469dfb2ddb1688dfd11754'](sharedFlags[sharedKey]);
+    if (inputGate && inputGate.isLocked) {
+      return !!inputGate.isLocked(sharedFlags[sharedKey]);
     }
-    if (inputGate && inputGate['_$9b5fe44f7c935bfb890bcb65']) {
-      return !!inputGate['_$9b5fe44f7c935bfb890bcb65']();
+    if (inputGate && inputGate.angle) {
+      return !!inputGate.angle();
     }
     return false;
   }
 
   function onMoveRejected() {
-    if (inputGate && inputGate['_$22320225cdd7c427d4b8d3cb']) {
-      inputGate['_$22320225cdd7c427d4b8d3cb'](sharedFlags[sharedKey]);
+    if (inputGate && inputGate.notifyRejected) {
+      inputGate.notifyRejected(sharedFlags[sharedKey]);
     }
   }
 
@@ -206,8 +206,8 @@ function createAutoSpin(deps, logger) {
         lastMoveAt = 0;
       }
 
-      if (inputGate && inputGate['_$2b1d9859a05368f4f18995bd'] &&
-          !inputGate['_$2b1d9859a05368f4f18995bd'](sharedFlags[sharedKey], 70)) {
+      if (inputGate && inputGate.checkPathBudget &&
+          !inputGate.checkPathBudget(sharedFlags[sharedKey], 70)) {
         mode = MODE_PAUSED;
         return;
       }
@@ -369,26 +369,26 @@ function createAutoSpin(deps, logger) {
 
   function getState() {
     const state = {
-      enabled: enabled,
-      disposed: disposed,
-      speed: speed,
-      ticks: ticks,
-      '_$913480583cd4866078c0c6be': moves,
-      errors: errors,
-      lastError: lastError,
-      '_$847df37188c9e0f15414daee': MODES[mode],
+      enabled,
+      disposed,
+      speed,
+      ticks,
+      moves,
+      errors,
+      lastError,
+      mode: MODES[mode],
       pending: pending !== null,
-      '_$9b5fe44f7c935bfb890bcb65': angle,
+      angle,
       anchor: anchorX === null ? null : { x: anchorX, y: anchorY },
-      '_$344ee9b150e5f1198fdd7ceb': holdKey,
+      holdKey,
     };
     return state;
   }
 
   return {
-    '_$1458b5e5e1ba5d16cc261b4d': setEnabled,
-    '_$da85984e278313ae052275c0': setSpeed,
-    'dispose': dispose,
-    '_$814748ecc47856e7b144daa6': getState,
+    setEnabled,
+    setSpeed,
+    dispose,
+    getState,
   };
 }

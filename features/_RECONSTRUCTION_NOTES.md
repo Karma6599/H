@@ -41,5 +41,58 @@ header during reconstruction and are preserved in the git history of this repo
 ## Status
 
 - `autospin.js` — COMPLETE, line-by-line verified (all 17 functions).
-  `getState()` exports the exact bytecode keys, including the hash-named
-  fields (`moves`, `mode`, `angle`, `holdKey`) and the boolean `pending`.
+  API and state keys renamed to their recovered semantic names for
+  readability; the mapping to the original bytecode hashes is preserved
+  below and must be used when cross-referencing other modules (the same
+  hashes recur across the bundle).
+
+## Hash → name map (autospin)
+
+API (returned object, bytecode `push_const [133..136]`):
+
+| hash (in .qbc) | name (in .js) |
+|---|---|
+| `_$1458b5e5e1ba5d16cc261b4d` | `setEnabled` |
+| `_$da85984e278313ae052275c0` | `setSpeed` |
+| `dispose` (plain atom) | `dispose` |
+| `_$814748ecc47856e7b144daa6` | `getState` |
+
+Deps/logger object (`get_field` in fn_2070):
+
+| hash | name |
+|---|---|
+| `_$0f5ca3bf508eb8602288884d` | `inputGate` |
+| `_$316a295be826abbc8b0c29da` | `scheduler` |
+
+Offsets object (`get_field` in fn_2070; `battle`/`screen`/`own`/`alive`/`x`/`y`/`move`/`input` are plain atoms — `input` is a stock QuickJS atom, printed `@stock[input]`):
+
+| hash | name |
+|---|---|
+| `_$6ff76fd71ed8749d4b126f55` | `alloc` |
+| `_$a0ecdfeb91f25b0091d3e509` | `free` |
+| `_$c4a008b45f098e9c9a99c679` | `submit` |
+
+inputGate methods (fn_281 / fn_1037 / fn_628):
+
+| hash | name | signature |
+|---|---|---|
+| `_$6c469dfb2ddb1688dfd11754` | `isLocked` | `(flags)` → bool |
+| `_$9b5fe44f7c935bfb890bcb65` | `angle` | `()` → joystick angle; `!!truthy` = player steering |
+| `_$22320225cdd7c427d4b8d3cb` | `notifyRejected` | `(flags)` |
+| `_$2b1d9859a05368f4f18995bd` | `checkPathBudget` | `(flags, limit)` → bool |
+
+Note: `_$9b5fe44f7c935bfb890bcb65` is used BOTH as the inputGate probe
+method and as the getState field holding the spin angle — same original
+name in the source (deterministic hash), which is why the field was
+recovered as `angle`.
+
+getState fields (fn_2280 `push_const [7..18]`):
+
+| hash | name |
+|---|---|
+| `_$913480583cd4866078c0c6be` | `moves` |
+| `_$847df37188c9e0f15414daee` | `mode` |
+| `_$9b5fe44f7c935bfb890bcb65` | `angle` |
+| `_$344ee9b150e5f1198fdd7ceb` | `holdKey` |
+
+(`enabled`/`disposed`/`speed`/`ticks`/`errors`/`lastError`/`pending`/`anchor` are plain atoms in the bytecode.)
