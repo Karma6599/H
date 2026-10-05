@@ -34,10 +34,12 @@ consulted.
 
 ## Verified against the bytecode
 
-Each file lists the fn_* ↔ function mapping and the state local indexes in
-its header comment. Spot-check any claim against
-`work/spin/resolved/*.dis` (annotated disassembly) if in doubt.
+The fn_* ↔ function mapping and state local indexes were recorded in the file's
+header during reconstruction and are preserved in the git history of this repo
+(commit `102d791`). Code files carry no comments (user preference).
 
 ## Status
 
 - `autospin.js` — COMPLETE, line-by-line verified (all 17 functions).
+  `getState()` exports the exact bytecode keys, including the hash-named
+  fields (`moves`, `mode`, `angle`, `holdKey`) and the boolean `pending`.
