@@ -1,38 +1,38 @@
-# Killaura (killaura)
+# HUD Editor (hudLayout)
 
 > Extracted from the JirGear QuickJS bytecode (`main.qbc`).
 
-**UI label:** `KILLAURA`
-
-Menu toggle registry index: **4**
+**UI label:** `EDIT HUD`
 
 ## Notes
 
-Auto-attack aura. Targeting modes (nearest / lowest HP / select target), guards: skip enemies above HP threshold, stop below own HP. Config group `killaura` in fn_488: {targeting, ignoreBots, useSuper, useGadget, debugView, minOwnHp, maxTargetHp}. Logger tag `killaura:targeting`.
+Drag-and-drop HUD layout editor (edit/save/reset). Also owns the telemetry widgets registry (handle/telemetry/floaters) and menu scale. Friendly RU label "Редактор HUD".
 
 ## Key strings / constants
 
-- `killaura`
-- `killaura:targeting`
-- `KILLAURA`
-- `targeting`
-- `ignoreBots`
-- `useSuper`
-- `useGadget`
-- `debugView`
-- `minOwnHp`
-- `maxTargetHp`
-- `SKIP ENEMIES ABOVE HP`
-- `STOP BELOW OWN HP`
-- `LOWEST HP`
-- `NEAREST`
-- `SELECT TARGET`
+- `hudLayout`
+- `EDIT HUD`
+- `SAVE HUD`
+- `SHOW HUD`
+- `RESET LAYOUT`
+- `RESET CONFIG`
+- `COMPACT VIEW`
+- `MONITOR`
+- `Редактор HUD`
+- `hud`
+- `telemetry`
+- `floaters`
+- `handle`
+- `scale`
 
-## Functions (6 in closure subtrees of ['fn_1443'])
+## Functions (9 in closure subtrees of ['fn_1443', 'fn_1478'])
 
 - `fn_1378` — args=1 vars=3 stack=3 bclen=128 cpool=9
 - `fn_1443` — args=0 vars=18 stack=6 bclen=1750 cpool=107
+- `fn_1478` — args=1 vars=204 stack=10 bclen=12578 cpool=381
+- `fn_1683` — args=1 vars=3 stack=3 bclen=168 cpool=12
 - `fn_1793` — args=1 vars=9 stack=8 bclen=345 cpool=22
+- `fn_2118` — args=2 vars=3 stack=3 bclen=129 cpool=9
 - `fn_2571` — args=1 vars=5 stack=5 bclen=234 cpool=16
 - `fn_2846` — args=1 vars=2 stack=3 bclen=126 cpool=9
 - `fn_424` — args=1 vars=3 stack=5 bclen=180 cpool=12

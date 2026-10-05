@@ -1,41 +1,39 @@
-# Emotes & Pins (emotes)
+# Follow player (follow)
 
 > Extracted from the JirGear QuickJS bytecode (`main.qbc`).
 
-**UI label:** `EMOTES`
+**UI label:** `FOLLOW`
 
-Menu toggle registry index: **7**
+Menu toggle registry index: **8**
 
 ## Notes
 
-Emote/spray automation + speed control, pin management, avatar import (Telegram endpoint t.me/JirGearPayBot?start=avatar). Events: emotes:open/close/stop/previous/next/repeat, emoteui:hud/open.
+Follows a designated player around the map — filter ally/enemy, optional auto-attack (attackEnemies), fireDelayMs/tickMs cadence. Shares the autofarm runtime (fn_1463/fn_215 config validators; fn_1013/fn_1692 runner). followTarget holds the locked player.
 
 ## Key strings / constants
 
-- `emotes`
-- `feature:emotes`
-- `emoteSpeed`
-- `emoteHud`
-- `emoteRepeat`
-- `usePins`
-- `emotes:`
-- `emoteui:`
-- `PINS`
-- `PINNED`
-- `CHOOSE A BUTTON`
-- `IMPORT AVATAR`
-- `CELEBRATE`
-- `DANCE`
-- `HERO POSE`
-- `SHOWTIME`
-- `VICTORY INTRO`
-- `DEFEAT INTRO`
-- `Invalid emote response`
+- `follow`
+- `followTarget`
+- `filter`
+- `ally`
+- `enemy`
+- `attack`
+- `attackEnemies`
+- `fireDelayMs`
+- `tickMs`
+- `autoRestart`
+- `autoSelect`
+- `FOLLOW`
 
-## Functions (3 in closure subtrees of ['fn_1463', 'fn_215'])
+## Functions (8 in closure subtrees of ['fn_1463', 'fn_215', 'fn_1013', 'fn_1692'])
 
+- `fn_1013` — args=1 vars=10 stack=8 bclen=495 cpool=17
 - `fn_1463` — args=2 vars=23 stack=6 bclen=1298 cpool=67
+- `fn_1692` — args=0 vars=23 stack=10 bclen=1259 cpool=71
+- `fn_171` — args=2 vars=4 stack=4 bclen=170 cpool=12
 - `fn_215` — args=1 vars=28 stack=8 bclen=1272 cpool=57
+- `fn_2633` — args=2 vars=4 stack=4 bclen=170 cpool=12
+- `fn_291` — args=2 vars=4 stack=4 bclen=166 cpool=12
 - `fn_942` — args=1 vars=3 stack=3 bclen=168 cpool=12
 
 ## Disassembly (entry)

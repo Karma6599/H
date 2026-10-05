@@ -1,26 +1,23 @@
-# Server Region (server_region)
+# Server IP HUD (server_ip)
 
 > Extracted from the JirGear QuickJS bytecode (`main.qbc`).
 
-**UI label:** `SERVER_REGION`
+**UI label:** `BATTLE SERVERS page`
 
-Menu toggle registry index: **16**
+Menu toggle registry index: **27**
 
 ## Notes
 
-Battle-server region switcher. Config group serverRegion {regionId, hud}. Events server:open/close/refresh/auto. Pinned origins 212.22.82.57 / 213.136.70.93 + sslip.io aliases (pinning bypass).
+Battle-server IP HUD: shows the connected server IP + latency, copy via copy:ip. serverRegion.hud config. Toggle 27.
 
 ## Key strings / constants
 
-- `server_region`
-- `serverRegion`
-- `regionId`
-- `server:`
-- `SERVER_REGION`
-- `BATTLE SERVER`
-- `BATTLE SERVERS`
-- `CONNECT`
-- `CONNECTING…`
+- `server_ip`
+- `SERVER_IP_TOGGLE`
+- `IP HUD`
+- `LATENCY`
+- `copy:ip`
+- `SERVER COPIED`
 
 ## Functions (1 in closure subtrees of ['fn_1343'])
 

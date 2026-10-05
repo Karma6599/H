@@ -1,32 +1,46 @@
-# Killaura (killaura)
+# Auto Dodge (auto_dodge)
 
 > Extracted from the JirGear QuickJS bytecode (`main.qbc`).
 
-**UI label:** `KILLAURA`
+**UI label:** `AUTO DODGE`
 
-Menu toggle registry index: **4**
+Menu toggle registry index: **2**
 
 ## Notes
 
-Auto-attack aura. Targeting modes (nearest / lowest HP / select target), guards: skip enemies above HP threshold, stop below own HP. Config group `killaura` in fn_488: {targeting, ignoreBots, useSuper, useGadget, debugView, minOwnHp, maxTargetHp}. Logger tag `killaura:targeting`.
+Projectile dodge engine. Native CModule planner does the heavy lifting (dodge-planner core, pthread worker). Tunables: reactionSpeed [0,100], directionPrecision [8,128], safetyMargin [0,120], horizonMs, moveDistance. Modes dodgeWhenCarrying / dodgeWhenStanding. Per-brawler ban list via ignoredBrawlerIds.
+
+## Config keys
+
+- `dodge.reactionSpeed`
+- `dodge.directionPrecision`
+- `dodge.safetyMargin`
+- `dodge.horizonMs`
+- `dodge.moveDistance`
+- `dodge.dodgeWhenCarrying`
+- `dodge.dodgeWhenStanding`
+- `dodge.ignoredBrawlerIds`
 
 ## Key strings / constants
 
-- `killaura`
-- `killaura:targeting`
-- `KILLAURA`
-- `targeting`
-- `ignoreBots`
-- `useSuper`
-- `useGadget`
-- `debugView`
-- `minOwnHp`
-- `maxTargetHp`
-- `SKIP ENEMIES ABOVE HP`
-- `STOP BELOW OWN HP`
-- `LOWEST HP`
-- `NEAREST`
-- `SELECT TARGET`
+- `auto_dodge`
+- `feature:auto_dodge`
+- `dodge`
+- `reactionSpeed`
+- `directionPrecision`
+- `safetyMargin`
+- `horizonMs`
+- `moveDistance`
+- `dodgeWhenCarrying`
+- `dodgeWhenStanding`
+- `ignoredBrawlerIds`
+- `ignoredBrawlers`
+- `AUTO DODGE`
+- `DODGE DISTANCE`
+- `DODGE WHILE IDLE`
+- `DODGE WITH BALL/OBJECT`
+- `SAFETY MARGIN`
+- `AUTO DODGE — BAN LIST`
 
 ## Functions (6 in closure subtrees of ['fn_1443'])
 

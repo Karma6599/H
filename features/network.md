@@ -1,10 +1,10 @@
-# Network layer (profiles API, offsets API, pinning bypass)
+# Network Layer (API, profiles, telegram)
 
-> Reconstructed from `bytecode/main.qbc` (JirGear custom QuickJS bytecode) — see `disasm/` for the full annotated disassembly.
+> Extracted from the JirGear QuickJS bytecode (`main.qbc`).
 
 ## Notes
 
-Remote offset profile fetched at runtime from https://jirgear.com/api/menu/offsets (ARM64 libg offsets). API origin regex-pinned. Telegram bot for payments/avatars.
+Remote offset profile (ARM64 libg offsets) fetched from jirgear.com/api/menu/offsets at runtime; API origin regex-pinned; Telegram bot for payments/avatars; device binding (jir-device).
 
 ## Key strings / constants
 
@@ -22,9 +22,9 @@ Remote offset profile fetched at runtime from https://jirgear.com/api/menu/offse
 - `Offset profile unavailable`
 - `Incompatible offset profile`
 - `Invalid trusted API origin`
+- `jir-device`
+- `POST`
 
-## Functions (0 in closure subtrees of [])
+## Disassembly (entry)
 
-
-## Disassembly (entry functions)
-
+_(no dedicated entry function — state lives in the shared config `fn_488` / visual runtime `fn_888`; see `ui/menu_structure.md`)_

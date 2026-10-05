@@ -1,28 +1,43 @@
-# Color & Glow (COLORS & SPEED, COLOR & GLOW, gradient)
+# Colors & Glow (colors)
 
-> Reconstructed from `bytecode/main.qbc` (JirGear custom QuickJS bytecode) — see `disasm/` for the full annotated disassembly.
+> Extracted from the JirGear QuickJS bytecode (`main.qbc`).
+
+**UI label:** `COLOR & GLOW`
 
 ## Notes
 
-Native color registry (CModule-backed), gradient tables, chroma. Menu: COLOR & GLOW + COLORS & SPEED + OPACITY.
+Native color registry (CModule-backed): solid/spectrum modes, RGB+hue/saturation/brightness, glow, opacity, cycle speed, 4 presets (ice/violet/sunset/mint). Events menu:colors, chroma:settings, mode:solid/spectrum.
 
 ## Key strings / constants
 
+- `mode:solid`
+- `mode:spectrum`
+- `red`
+- `green`
+- `blue`
+- `hue`
+- `cycleSeconds`
+- `saturation`
+- `brightness`
+- `opacity`
+- `glow`
+- `menu:colors`
+- `chroma:settings`
 - `COLOR & GLOW`
 - `COLORS & SPEED`
-- `Color & glow`
+- `OPACITY`
+- `SPECTRUM`
+- `SOLID`
 - `Live colors and animation speed`
 - `Color gradient table 46 is not ready`
 - `Color registration capacity exceeded`
-- `chroma:`
 - `Reset colors`
 - `Solid color`
-- `OPACITY`
-- `glow`
-- `fill`
+- `preset:ice`
+- `preset:violet`
+- `preset:sunset`
+- `preset:mint`
 
-## Functions (0 in closure subtrees of [])
+## Disassembly (entry)
 
-
-## Disassembly (entry functions)
-
+_(no dedicated entry function — state lives in the shared config `fn_488` / visual runtime `fn_888`; see `ui/menu_structure.md`)_
