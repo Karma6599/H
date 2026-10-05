@@ -31,7 +31,7 @@ Built as an array literal: `['0'→'', '1'→'aim_bot', ..., '13'→null (remove
 | 3 | `auto_farm` | AUTO FARM | | `features/auto_farm.md` |
 | 4 | `killaura` | KILLAURA | | `features/killaura.md` |
 | 5 | `hold_to_shoot` | HOLD TO SHOOT | | `features/hold_to_shoot.md` |
-| 6 | `auto_spin` | AUTO SPIN | | `features/auto_spin.md` |
+| 6 | `auto_spin` | AUTO SPIN | | `features/autospin.js` |
 | 7 | `emotes` | EMOTES | | `features/emotes.md` |
 | 8 | `follow` | FOLLOW | | `features/follow.md` |
 | 9 | `xray` | X-RAY | | `features/xray.md` |
