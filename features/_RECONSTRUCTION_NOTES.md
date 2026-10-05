@@ -305,3 +305,96 @@ built as 'Battle ' + Object.keys(OFFSETS)[index].
   utilitySamples, utilityObjects, utilityNativeCalls, utilityQueued,
   offsetChecks, nameReads, nameCacheHits, guardedSkips, errors
 - fn_888 entity snapshot fields: id, slot, gid, name, hp, maxHp, alive, ratio, seen
+
+## auto_dodge (features/autododge.js)
+
+- Real module subtree: fn_1432 [#535] (parent fn_509 = battle-modules bootstrapper,
+  manifest index '6') + 90 descendants. The auto-generated doc's fn_1443 attribution
+  was wrong (fn_1443 = the save-state aggregator). fn_1903 = options normalizer,
+  fn_2651 = threat collector, fn_2207 = tick, fn_1333 = antiSnipe jitter
+- Options model: 21-slot STATE array + OPTION_KEYS order (reactionSpeed,
+  directionPrecision, safetyMargin, horizonMs, reactionMs, commandIntervalMs,
+  moveDistance, holdDirectionMs, compactDodge, parkMargin, releaseHysteresis,
+  antiSnipe, antiSnipeMs, antiSnipeReach, trimHazardEnd, maxThreatRadius,
+  dodgeWhenCarrying, dodgeWhenStanding, ignoredBrawlerIds, aggressiveness,
+  ignoredThreatPairs); defaults [100,48,45,700,0,16,360,0,true,40,8,false,130,
+  0.85,true,360,true,true,[],75,[]]; ranges in fn_1903 spec map
+- Directions = Array.from({length: directionPrecision}, (e,i) => unit vector 2*pi*i/N)
+  (fn_1409 + fn_209)
+- Threat pipeline (fn_2651): providers[6] projectile scan -> per-projectile
+  fn_2666; providers[7] zone provider; own-position marker hazard (ttl 2.5s);
+  enemy body circles (reach test); aim prediction (cap 1.3s); tracker.update ->
+  dispatch via memoized 4-tuple traits (fn_1394) to subsystem expanders; horizon
+  finalization (markers <= 2.5s, enemy <= planHorizon, aim <= 1.3s)
+- Subsystem expanders: headingTracked (fn_8), timedBurst (fn_1733), curving
+  (fn_2291, angVel cap 12 rad/s, dt clamp 16-250ms), controllerProjectile
+  (fn_1389, phase 380-760 sweep +/-50deg), sniper (fn_205, corridor
+  min(70, v*0.012), BO burst), spread (fn_1808, first-contact burst)
+- Sniper classes: 1 BELLE, 2 PIPER, 3 BO, 4 PIERCE via canonical names
+  (ELECTROSNIPER/BELLEPROJECTILE, SNIPERPROJECTILE/PIPERPROJECTILE,
+  BOWDUDE/BOARROW, PIERCE...) matched against fn_2441 evaluator; loc_104 = 3 = BO
+- Tick (fn_2207): 6 gates (enable, suspend, standing+isMoving native flag,
+  carrying, own staleness 150ms, same-frame dedupe); teleport-safe motion
+  (speed <= max(3000, 4*maxSpeed), clamp to maxSpeed); calls the shared-library
+  direction engine registry['_$83a10f3eb573b85fb3c0b8e0'] with a 20-field
+  config (angleSpread = pi*(0.12+0.88*aggressiveness/100), hop = clamp(60,360)*
+  (1.3-0.7*aggressiveness/100), compactDodge ? parkMargin : false, ...);
+  stores plan in loc_108, holdUntil = now + holdDirectionMs on direction change
+  (dot < 0.98), planMoved on delta > 0.001
+- antiSnipe (fn_1333): perpendicular jitter to the aim line, flip every
+  antiSnipeMs*(0.75+random*0.5), drift correction beyond 150 from anchor,
+  wall check via raycast (limit 140) with side flip fallback
+- Native hook (fn_1061 + fn_743/fn_2374): NativeFunction(ptr,'pointer',[]) at
+  the offset-220 hook; onEnter reads own entity (x/y/radius/speed/maxSpeed/
+  heading/gameTs/isCarrying via readFloat/readU8), samples position history
+  (150ms window, 64 cap), writes dodge target position (writeS32 x/y + bridge
+  commit), command gate = commandIntervalMs; onLeave writes plan command floats
+  (x*100/y*100), active byte, timestamp
+- fn_1462 = requireDodgeDep (lazy dep resolution, TypeError 'Missing dodge
+  dependency <name>'); registry keys resolved through fn_509's manifest
+
+## Hash -> name map (auto_dodge)
+
+- '_$71cd06c96e960f95ce5754ac' -> setOptions (fn_1903, registry on ctx)
+- '_$e301ab50874e83131d4045f3' -> planDodge (fn_2651)
+- '_$797c01311c01b478a69339bd' -> readOwnEntity (fn_1709)
+- '_$762e1513b74417ddb14ab31f' -> readNativeFlag (fn_1628)
+- '_$914ccde1abebb373d8b8f750' -> clampToPlayfield (fn_616)
+- '_$498063d1494ef410120f82f8' -> writePosition (fn_9)
+- '_$a58ffce950afff77a5752646' -> planDodgeStep (fn_2207)
+- '_$a65e0a2462e673d88e6feee8' -> installNativeHook (fn_1061)
+- '_$194dfac1a42f1a727dbf1203' -> resetDodgeState (fn_1231)
+- '_$3ef3235fb754a3f1265d70a7' -> getPlan (fn_608, returns loc_108)
+- '_$d512b339e08eeedc9d9e72da' -> isDodging (fn_2014, returns loc_26)
+- '_$c57de1024fd5027a5a9568b9' -> isDodgingOrMoved (fn_428, loc_26 || loc_55)
+- '_$828f136528603782e8c3f694' -> aggressiveness (option 19, [0,100], def 75)
+- '_$5a852abb2baf216bd9695a90' -> ignoredThreatPairs (option 20, [id<512, class 0-7] pairs)
+- '_$443793ddaa450ee38c083a7f' -> ignoredBrawlers (option, array of names)
+- '_$acd71be6ec997601e3b7a920' -> antiSnipeBrawlers (option, def PIPER/COLT/BEA/BEE/BELLE/ELECTROSNIPER)
+- '_$b8098fead853d9d093ab84d7' -> margin (hazard/ownRec field, = safetyMargin)
+- '_$28da3c8e1f0b48c4a4e289cd' -> horizon (ownRec field, horizonSec)
+- '_$ac7aa2debb2fd2945bf24c77' -> vx (hazard field)
+- '_$beba420ad4d8b1b78936b59c' -> vy (hazard field)
+- '_$eff2e994b9058c064b527129' -> ttl/end (hazard field)
+- '_$e64a8b1942ab80ed22f8edd2' -> ownerBox (hazard field)
+- '_$cb72a18c4c987235409df8b0' -> planHorizon (hazards array property, atom #5022)
+- '_$c94b2d90bacf9319e3c26783' -> raycast (helpers registry, wall clearance)
+- '_$83a10f3eb573b85fb3c0b8e0' -> directionEngine (helpers registry, shared scoring engine)
+- '_$81ecbe0191ce69f51fbc7303' -> estimateDistance (module ctx)
+- '_$96db106b20dce7e9e184c70b' -> buildHazard (module ctx)
+- '_$a18b02557b1a1c19d436e5f7' -> commitPosition (bridge method)
+- '_$5c39acaea68f7e2dca79827b' -> clamp (helpers registry, loc_112)
+- '_$9bd9ec1d23e38e503beb4bd7' -> getPlayfieldWidth (helpers registry)
+- '_$f7c30d51cf08aedbf4c036af' -> getPlayfieldHeight (helpers registry)
+- '_$d51fbbbf8e8d9c78c4895a8b' -> effectiveMargin (per-hazard field)
+- '_$ddf5f1373eac550ad776b11e' / '_$f14bb127548e574dafce6ee1' -> nearest-enemy scan internals (fn_2584)
+- '_$4133aae8c4c8e56b452cdf29' / '_$926d5cde826d9884789cefa6' -> geometry solver fields (fn_669)
+- '_$c28d5317b4e256937cc4c90f' / '_$c0858225bbc8ae0227f380a7' -> actor-cache Map keys (fn_767)
+- '#1577' = x, '#1804' = y, '#2715' = vx, '@'capture_2381'' = vy, '#2416' = id,
+  '#2722' = own x, '@'capture_2388'' = own y, '#2723' = radius, '#3532' = gameTs,
+  '@'capture_2389'' = enemies iterable, '#2729'/'#2730' = actor iterables,
+  '#4775' = score, '@'call_arg_403_0'' = plan, '@'call_arg_271_4'' = isCarrying,
+  '@'call_arg_896_0'' = own maxSpeed, '@'call_arg_296_0'' = Math.PI
+- Conventions corrections verified this session: @stock[catch] = 'length',
+  @stock[cause] = 'next', @stock[extends] = 'value', @stock[true] = 'return',
+  #54 = 'done', #125 = Symbol.iterator, #31 = 'prototype', #126 = 'call'

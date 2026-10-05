@@ -42,7 +42,17 @@ Projectile dodge engine. Native CModule planner does the heavy lifting (dodge-pl
 - `SAFETY MARGIN`
 - `AUTO DODGE — BAN LIST`
 
-## Functions (6 in closure subtrees of ['fn_1443'])
+## Functions
+
+CORRECTED: fn_1443 below is the save-state aggregator, NOT the dodge module.
+The real auto-dodge module is fn_1432 [#535] (parent fn_509, manifest index 6)
+plus 90 descendants (~65 KB bytecode). Reconstructed in `autododge.js`.
+Key functions: fn_1432 (module scope), fn_1903 (options normalizer),
+fn_2651 (threat collector), fn_2207 (tick), fn_1333 (antiSnipe jitter),
+fn_2651's closures, six subsystem expanders (fn_8/fn_1733/fn_2291/fn_1389/
+fn_205/fn_1808), fn_1462 (requireDodgeDep).
+
+Original (wrongly attributed) subtree, kept for reference:
 
 - `fn_1378` — args=1 vars=3 stack=3 bclen=128 cpool=9
 - `fn_1443` — args=0 vars=18 stack=6 bclen=1750 cpool=107
