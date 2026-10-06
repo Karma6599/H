@@ -54,9 +54,13 @@ header during reconstruction and are preserved in the git history of this repo
   gates) carry positional names and are documented with their evidence level.
 - `ball.js` — COMPLETE for the goal/ball_assist/ball_trajectory core
   (fn_109 runtime: factory + 16-method API + state model + shot pipeline +
-  fn_720 bounce-trajectory solver, ~28 functions byte-verified). The
-  planner/solver layer and mortis_chain internals remain documented
-  boundaries (see the PENDING list in the ball section below).
+  fn_720 bounce-trajectory solver, ~28 functions byte-verified). Session 6
+  deep-read (documented in ball_assist.md + the session-6 notes section):
+  fn_1028 assist fire hook, fn_1906 refreshPlan, fn_623 scanBall, fn_2166
+  buildGoalRecord, fn_554 aimAtGoal, fn_861 executeGoalMove, fn_260
+  createTracker. The planner/solver layer and mortis_chain internals
+  remain documented boundaries (see the PENDING list in the ball section
+  below).
 
 ## Hash → name map (autospin)
 
@@ -767,23 +771,135 @@ numeric slots 1/2/3): this.threadId, this.record, this.outBuffer.
   (header alloc size — inferred 24), loc_106 (points buffer capacity —
   inferred 32 ≥ 17 max). Documented in ball.js constants.
 
+### Session 6 — ball assist deep-read + brawlers feature map
+
+Closure-rule refinement (CRITICAL for global references): the per-function
+closure tables END with the captured globals (Date, Math, String, Number,
+Object, undefined, NativeFunction, ptr…) at VARYING positions — e.g. fn_1028
+(closures=2653): get_var 2651 = Date, 2652 = Math; fn_1906 (closures=2649):
+get_var 2648 = String; fn_623: 2648 String, 2650 Math; fn_554: 2648 Date,
+2649 Math; fn_260: 2482 Math, 2483 Date, 2484 undefined. The fn_488
+arithmetic (N−169/N−166) coincidentally maps some of these into real
+fn_488 locals (fn488_slotvals 2482='undef', 2483='arrfrom2') — do NOT
+trust it past the last fn_488 capture; resolve via each function's header
+`closures=` count (get_var N ≥ closures-count ⇒ global tail).
+
+- fn_1028 = ballAssistFireOnEnter (hook 1 @ VALUES[0], child of fn_2043,
+  rule N−3): gates `!features[11] || interlock(loc_120) ||
+  trickshotModeValue(loc_134) !== fn_488.loc_344 (=0.0)` — the assist fire
+  rewrite only runs with a trickshot mode armed; slot =
+  inputGate.getActiveSlot() must satisfy fn_1384(slot) === 5;
+  seedPointer = args[0]; motion = fn_332 scanObjective(Date.now());
+  isUsablePointer(args[3]) && args[3].equals(motion.world.ownCharacter);
+  shot = fn_1906(motion, seedPointer, now); writes args[1]=Math.round(shot.x),
+  args[2]=Math.round(shot.y), args[5]=args[6]=Math.round(0);
+  lastWriteAt(loc_136)=now; counters[loc_44=4]++; fn_29 resetBallState();
+  catch → fn_1411 reportError.
+- fn_1906 refreshPlan(motion, seed, now) — signature recovered (3 args):
+  `!isShotReady(motion) || !activePlan || seedKey !== String(seed) ||
+  battle !== String(motion.battle) || ballKey !==
+  String(motion.world.ball.gid) || super !== ballScan[loc_18=3] ||
+  now - activePlan.at > 180` → activePlan=null, return null; else
+  buildPlan(motion, seed, activePlan.candidate, now); lastPlan=plan always,
+  activePlan=plan only when plan.clear; returns activePlan.
+- fn_623 scanBall(motion, battle) — memoized walk: gates battle.data
+  usable, (paused===true || isUsable(own)) → own re-read via getNative
+  ('bool', ['pointer']) else bail; key `String(battle.data)+':'+Number(own)`
+  in actorCache (cap 32); ballList = battle.data.add(fn_488.loc_126)
+  .readPointer(); hdr via getNative(loc_5|loc_102 by own-validity);
+  ball = getNative(loc_68,'pointer',['pointer','int'])(hdr, 0);
+  range = functions['_$3d06417b13e3de8271ddec7b'](hdr)*100 ∈ (0,20000);
+  ballPtr = functions['_$dee829f228dea43909e05fac'](hdr, 0);
+  radius = functions['_$c9a016ba6774b7d955225dc7'](ballPtr) | battle.radius
+  || 60; speed = functions['_$a6dfc77d0b9aa3e800c141be'](ballPtr) | 0;
+  travelType = ballPtr.add(fn_488.loc_754).readS32() | -1; returns
+  [range, clamp(radius,1,500), hdr, !!own, speed, travelType].
+- fn_2166 buildGoalRecord(motion, radius) — fn_500(motion) goal data (null →
+  null); goalList = motion.battle.add(fn_488.loc_1184).readPointer();
+  side = goalList.add(fn_488.loc_2313).readU8() !== 0; goalX =
+  base.add(side ? fn_488.loc_1522 : fn_488.loc_382).readS32(); ownPos =
+  getNative(loc_154,'int',['pointer','pointer'])(world.ownCharacter,
+  motion.battle) | world['_$c1f0d75ba1eb7f6e49ba8b1f']||0; wall =
+  wallScan['_$4af7ac4684d5c969f56b986f']?.() ?? 0; 8-part key join(':');
+  rebuild via fn_488.loc_204(goalData._$218f…, goalData._$968e…, ownPos,
+  {goalSide, depth, radius, wallScan}) → goalAnchor(loc_78).
+- fn_554 aimAtGoal(anchor?, options?) — gates + budget Math.min(range);
+  target = fn_488.loc_1109(origin, goalRecord, wallScan, budget, ball,
+  entities) [fn_2584 family]; angle = atan2; shot = fn_822(motion, root,
+  angle); record.aimTarget += (isOpen ? 1 : -1) * (speed + 25); plan =
+  fn_2163(shot.samples, record, fn_2620(ballScan), entities, 0); success =
+  plan && plan.clear && plan.bounces === 0 (direct shot); returns {...target,
+  x: shot.x, y: shot.y, traveled: plan.length, _$ad9c09d0…: true}.
+- fn_861 executeGoalMove(motion, path, now) — 70 ms throttle + fn_187 gate;
+  checkPathBudget(INPUT_FLAGS[5], 120); pathStep callback
+  motion['_$7f14c5e39a9f95a2c0939747'](battle, x, y) when function; else
+  warmNatives([loc_90, loc_14, loc_133, loc_28, loc_7]) → controller =
+  motion.functions['_$c104bf86b08ef1cf66fd7938'] → queue =
+  controller.add(fn_488.loc_1822).readPointer() → 72-byte command
+  (writeByteArray) → submit; lastMoveAt=now; counters[3]++.
+- fn_260 createTracker(options={}) — capacity = max(32, min(2048,
+  options['_$18bf150356dd129b8567a861'] || 1000)); clock =
+  options['_$3fa7ce82ce60e5b579e8b679'] || Date.now; mode default 3
+  (options['_$959ddfbde0867dbe30d9b573'] === undefined ? 3 : value);
+  API {path: fn_2860 (5-arg), reset: fn_550, getState: fn_2448}.
+- fn_2163 solvePlan input contract (from call sites + cpool): samples
+  isArray, length 2..128, every |x|,|y| ≤ 100000, hypot segment math;
+  output plan carries clear/bounces/segments/length.
+- fn_2705 genCandidates(own, goal, fn_500(snapshot)) — 36-direction fan ×
+  amplitude tiers 0.25/0.5/0.75, atan2/cos math, per-candidate fn_2479.
+
+### Brawlers feature map (session 6, for brawlers.md)
+
+- fn_1535 [#1666] identity factory (child of fn_488): exports
+  {manager, homeMode, avatar, _$ada97b007f74f324d2445e6e, …}; fn_84
+  [#1668] getBrawlerIdentity — 'Brawler identity function unavailable',
+  findRangeByAddress + indexOf('r') + native at +47701.
+- fn_2288 [#2788] settings store: fn_2512 [#249] serialize
+  {version: state[0], autoSwitch: state[1], global: fn_381(23, state[2]),
+  byBrawler: Object.fromEntries((state[3]||[]).map(fn_752))}; fn_752 =
+  [String(e[0]), {name: e[1], settings: fn_381(2, e[2])}]; fn_2227 [#2794]
+  validate: byBrawler ≤ 1024 entries, keys /^(0|[1-9]\d{0,5})$/, values
+  {name, settings: isArray}.
+- Menu pages: fn_1488 [#1672] page factory (children fn_1942 USE GLOBAL
+  SETTINGS/ОБЩИЕ НАСТРОЙКИ, fn_1492 Waiting for brawler, fn_2011, fn_1967,
+  fn_316); fn_1647 [#1152] grid factory (Auto Farm UI helper
+  _$e4d4bcee11bf985393979150, 'Auto Farm UI helper missing'); fn_1767
+  [#1182] renderer (LOADING BRAWLERS…/ЗАГРУЗКА БОЙЦОВ…, 330/14/10 layout,
+  panel_background/border_top, list field _$c8216481dd5b120467ed0c99);
+  fn_2131 [#1809, fn_2349 child] Waiting for brawler…; fn_887 [#1600,
+  fn_1980 child] AUTO DODGE — BAN LIST picker.
+- fn_488 catalog/table rows: brawlers→BRAWLERS;
+  _$74242ee5262be322bb1db3ed→ANY ELIGIBLE BRAWLER (fn_692 closure);
+  _$127eb0345d274e59799d65e2→picker hint;
+  _$5f63fca8525ab4b6bec949d7→LOCKED; _$9e9b0637c47114d87495640f→NOT
+  RELEASED. Dodge options map slot 5 = ignoredBrawlerIds, slot 6 =
+  _$828f136528603782e8c3f694 (aggressiveness). Autofarm 12-slot spec:
+  [0] enabled [1] selectedBrawlers [3] attack [4] follow [5] autoSwitch
+  [6] autoStart [7] useSuper [8] useHyper [9] useGadgets [10] usePins.
+- Module import atom: 'utils/brawlerName.js' (name canon source).
+
 ### PENDING (verified boundaries, deep read next session)
 
 fn_2163 solvePlan (4552 bclen — the trajectory-vs-entities planner, the
-largest single boundary), fn_2705 genCandidates (1656), fn_623 scanBall
-(1271 — Map/readPointer entity walk), fn_2166 buildGoalRecord (820 —
-reads world `#4728`, world.battle, world.wallScan; produces {x, y,
-mouthLeft/isOpen/aimTarget/mouthLow/mouthHigh} per the fn_696 decode),
-fn_696 testGoalSegment (335 lines extracted to work/ball/fns — null path
-reconstructed; the full mouth-box hit test needs the goal session), fn_861
-executeGoalMove (1447 — writes counters[3] 'moves'), fn_554 aimAtGoal
-(1130 — atan2 + goalRecord.aimTarget + fn_2584 internals), fn_1166
-followObjectivePath (281), the goal/assist/mortis hook handlers
-fn_2714/fn_508/fn_1028/fn_729/fn_569, the mortis subtree (fn_1876,
-fn_2446, fn_1544, fn_2209, fn_2202, fn_1785, fn_2392, fn_500, fn_187,
-fn_2699, fn_332-adjacent), fn_260 tracker internals, and the battle-input
-goal side: fn_1572 goal branch + fn_1754 (args[1]/[2]/[5]/[6] rewrite on
+largest single boundary; input/output contract recovered in session 6),
+fn_2705 genCandidates internals (1656; 36-direction fan + 0.25/0.5/0.75
+tiers recovered), fn_500 goal data reader (fields
+_$218f61af0ee6df51fa1f8b54 / _$968ec73a6dbe36fd4c231937), fn_488.loc_204
+goal-record factory (mouth geometry), the fn_2584-family target solver
+(fn_488.loc_1109), fn_696 testGoalSegment (335 lines extracted to
+work/ball/fns — null path reconstructed; the full mouth-box hit test needs
+the goal session), fn_1166 followObjectivePath (281), the goal/mortis hook
+handlers fn_2714/fn_508/fn_729/fn_569, the mortis subtree (fn_1876,
+fn_2446, fn_1544, fn_2209, fn_2202, fn_1785, fn_2392, fn_187, fn_2699),
+fn_260 tracker internals (fn_106/fn_1634/fn_2860/fn_550/fn_2448), fn_381
+settings codec (brawlers groups 2/23), and the battle-input goal side:
+fn_1572 goal branch + fn_1754 (args[1]/[2]/[5]/[6] rewrite on
 activateWeapon, documented in the anti_afk offsets map).
+
+RECONSTRUCTED in session 6 (ball assist pipeline — see the session-6
+section above): fn_1028 (assist fire hook), fn_1906 (refreshPlan),
+fn_623 (scanBall), fn_2166 (buildGoalRecord), fn_554 (aimAtGoal),
+fn_861 (executeGoalMove), fn_260 (createTracker).
 
 RECONSTRUCTED in session 5 (trajectory overlay — see the pipeline section
 below): fn_1795/fn_377 (system hook), fn_566/fn_2475 (sim hook), fn_68 +

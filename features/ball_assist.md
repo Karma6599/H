@@ -6,9 +6,155 @@
 
 Menu toggle registry index: **11**
 
+Feature id 11 of the ball runtime `fn_109` (registry group `[10, 11, 12, 15]` =
+goal, ball_assist, ball_trajectory, mortis_chain; state map
+`Object.fromEntries([10,11,12,15].map(k => [k, false]))` in fn_788).
+Reconstructed in `ball.js`.
+
 ## Notes
 
-Ball kicking assist for Brawl Ball modes. Part of the ball/mortis runtime fn_109 — counters ballFinds / ballShots.
+Ball-kicking assist for Brawl Ball modes. One runtime (`fn_109`, 182 locals,
+63 descendants) serves the four features; this page documents the
+assist-specific pipeline (feature 11) plus the goal-record / scan / tracker
+plumbing shared with `goal.md` and `ball_trajectory.md`.
+
+Counters (fn_109 `counters[9]`, COUNTER_KEYS): `[0]` ticks, `[1]` scans,
+`[2]` ballFinds, `[3]` moves, `[4]` ballShots, `[5]` trajectoryDraws.
+
+### Assist pipeline (byte-verified)
+
+1. `fn_2205` tick — gates `disposed`/`ticked`/`(goal||assist)`/80 ms; per
+   tick: `counters[0]++`, seed update, then for goal+mark:
+   `tracker.path(ownPos, mark, wallScan, world field, battle)` →
+   `fn_861 executeGoalMove(motion, path, now)`.
+2. `fn_332` scanObjective(now, provided) — motion snapshot via
+   `inputGate.scanBattle(100)`; battle-key change → resetBattleState;
+   `fn_2597` loadBattleState: ball record `{gid, x, y, name||'BALL',
+   radius||60}`, `counters[2]++` (ballFinds), status machine
+   `['idle','goal','ball','search']` (paused&&goal→1, ball→2, goal→3).
+3. `fn_623` scanBall(motion, battle) — **memoized entity walk**:
+   - gates: `battle.data` usable; `(world.paused === true ||
+     isUsablePointer(world.ownCharacter))` re-reads own char via
+     `getNative(..., 'bool', ['pointer'])`, else bails (error path 1229).
+   - memo key `String(battle.data) + ':' + Number(ownChar)` in
+     `actorCache` (`fn_109.loc_32`, Map, size cap 32 — no cache write
+     beyond 32 entries).
+   - `ballList = battle.data.add(fn_488.loc_126).readPointer()` (isNull →
+     null); header via VALUES native (slot depends on own-char validity:
+     `fn_109.loc_5` vs `fn_109.loc_102`); ball entity via
+     `getNative(fn_109.loc_68, 'pointer', ['pointer','int'])(hdr, 0)`.
+   - `range = motion.functions['_$3d06417b13e3de8271ddec7b'](hdr) * 100`,
+     must be `0 < range < 20000` else null.
+   - ball entity ptr `motion.functions['_$dee829f228dea43909e05fac'](hdr, 0)`;
+     when usable: `radius = functions['_$c9a016ba6774b7d955225dc7'](ballPtr)`,
+     `speed = functions['_$a6dfc77d0b9aa3e800c141be'](ballPtr)`,
+     `travelType = ballPtr.add(fn_488.loc_754).readS32()`; else
+     `radius = battle.radius || 60`, `speed = 0`, `travelType = -1`.
+   - result `[range, clamp(radius, 1, 500), hdr, !!ownChar, speed,
+     travelType]`; catch → `fn_1411 reportError` → null.
+4. `fn_2166` buildGoalRecord(motion, radius) — **memoized goal anchor**:
+   `fn_500(motion)` goal data (null → return null); goal list
+   `motion.battle.add(fn_488.loc_1184).readPointer()`; side flag =
+   `goalList.add(fn_488.loc_2313).readU8() !== 0`; goal depth/X =
+   `base.add(side ? fn_488.loc_1522 : fn_488.loc_382).readS32()`; own
+   position via `getNative(fn_109.loc_154, 'int', ['pointer','pointer'])(
+   world.ownCharacter, motion.battle)` or `world._$c1f0d75ba1eb7f6e49ba8b1f
+   || 0`; wall term = `wallScan['_$4af7ac4684d5c969f56b986f']?.() ?? 0`;
+   8-part memo key `[String(battle), goalData._$218f61af0ee6df51fa1f8b54,
+   goalData._$968ec73a6dbe36fd4c231937, ownPos, side, goalX, radius, wall]`
+   .join(':')`; on change rebuilds `goalAnchor (fn_109.loc_78)` through the
+   goal-record factory `fn_488.loc_204` with
+   `{goalSide, depth, radius, wallScan}` → mouth geometry
+   (mouthLeft/isOpen/aimTarget/mouthLow/mouthHigh, see fn_696).
+5. `fn_2046` isShotReady(motion) — features[11], paused, goalRecord,
+   ballScan, ownCharacter ptr; state byte `VALUES[24] === 1`;
+   `fn_293(19,'bool') !== scan[3]`; world flags (`_$5cdf233d` false-fail,
+   `_$9d434715` truthy); freshness ≤ 180 ms; `fn_761` battle alive;
+   `scan[5] === 31` (ball in flight) `&& scan[4] > 0` (speed).
+6. `fn_1906` refreshPlan(motion, seed, now) — identity checks
+   `!isShotReady(motion) || !activePlan || activePlan.seedKey !==
+   String(seed) || activePlan.battle !== String(motion.battle) ||
+   activePlan.ballKey !== String(motion.world.ball.gid) ||
+   activePlan.super !== ballScan[3] || now - activePlan.at > 180` →
+   `activePlan = null; return null`; else rebuild
+   `buildPlan(motion, seed, activePlan.candidate, now)` (fn_1526:
+   `shot = buildShot`, entities spread `[...world.entities,
+   ...world.projectiles]`, `solvePlan(samples, goal, readBallRecord(scan),
+   entities)`, plan `{x, y, from, candidate, at, seedKey, battle, ballKey,
+   super}`); adopts only `plan && plan.clear` (lastPlan always updated).
+7. `fn_2230` executeShot — gates (disposed, features[11], interlock, 32 ms);
+   `(!isShotReady && !isUsablePointer(seed))` → reset + mode 1;
+   `cacheKey = [battle, ballGid, scan[3], 4 goalRecord fields].join(':')`;
+   plan = refreshPlan ?? `genCandidates(own, goal, fn_500(snapshot))`
+   (fn_2705: 36-direction fan × amplitude tiers 0.25/0.5/0.75, per-candidate
+   evaluator fn_2479) → `candidates[++seq % len]` → buildPlan; mode 2/4;
+   throttles (modeValue===1, ≥70 ms since shotStartedAt, ≥500 ms since
+   lastWriteAt, now ≥ notBefore); `getActiveSlot()` must validate to 5
+   (fn_1384); gate probe (flags, 100); aim read `VALUES[22]/[23]` → write
+   plan.x/y → fire `VALUES[12]('int',[ptr,ptr])(seed, ownCharacter)` →
+   `counters[4]++` → finally restore aim, clear interlock,
+   resetBallState, releaseGate.
+8. `fn_1919` aimRedirectAndFire(context, x, y) — scan gates + isFinite +
+   180 ms; own state byte; `hud = fn_293(28,'pointer',[])()` (VALUES[28] =
+   screen); validate (ptr + scale > 0); aim read → `Math.round` write →
+   fire → restore → bookkeeping (lastWriteAt, `counters[4]++`).
+9. `fn_1028` **assist fire hook** (refreshHooks hook 1 @ `VALUES[0]`
+   `_$86578cf3ee4dbb337c25e5d4`, onEnter) — gates: `features[11] ||
+   interlock || trickshotModeValue !== 0` → return; `slot =
+   inputGate.getActiveSlot()` must satisfy `fn_1384(slot) === 5`;
+   `seedPointer = args[0]`; `motion = scanObjective(Date.now())`;
+   `isUsablePointer(args[3]) && args[3].equals(motion.world.ownCharacter)`
+   else return; `shot = refreshPlan(motion, seedPointer, now)`; writes
+   `args[1] = Math.round(shot.x)`, `args[2] = Math.round(shot.y)`,
+   `args[5] = args[6] = 0`; `lastWriteAt = now`; `counters[4]++`;
+   `resetBallState()`; catch → reportError. (Also fed by the trajectory
+   system hook: fn_1795 stashes seedPointer unconditionally and sets
+   `notBefore = now + 500` when assist is on.)
+10. `fn_554` aimAtGoal(anchor?, options?) — scanObjective → gates
+    (goalRecord, ballScan, `ballScan[5] === 31`, world flag); budget =
+    `Math.min(options?.range ?? ballScan[0], ballScan[0])`; root ptr via
+    `getNative(fn_109.loc_110, 'pointer', [])()`; origin = anchor ??
+    `{x: world.ownX, y: world.ownY}`; entities spread; **target solver**
+    `fn_488.loc_1109(origin, goalRecord, motion.wallScan, budget, ball,
+    entities)` (fn_2584 nearest-scan family); `angle = atan2(target.y -
+    origin.y, target.x - origin.x)`; `shot = buildShot(motion, root,
+    angle)` (fn_822: native trajectory sim, samples {x,y} 12-byte stride,
+    span 24..1536); goal record copy with
+    `aimTarget += (isOpen ? 1 : -1) * (speed + 25)`;
+    `plan = solvePlan(shot.samples, record, readBallRecord(ballScan),
+    entities, 0)` (fn_2163); success requires `plan && plan.clear &&
+    plan.bounces === 0` (direct shot, no bounce); returns
+    `{...target, x: shot.x, y: shot.y, traveled: plan.length,
+    _$ad9c09d0feb7e97c78656fa9: true}`.
+11. `fn_861` executeGoalMove(motion, path, now) — throttle `now -
+    lastMoveAt < 70` → false (+ fn_187 gate); path-budget gate
+    `inputGate.checkPathBudget(INPUT_FLAGS[fn_488.loc_849 = 5], 120)`;
+    if `typeof motion['_$7f14c5e39a9f95a2c0939747'] === 'function'`:
+    `ok = !!pathStep(motion.battle, path.x, path.y)`; else manual path:
+    `warmNatives([loc_90, loc_14, loc_133, loc_28, loc_7])` (fn_1349) →
+    controller `motion.functions['_$c104bf86b08ef1cf66fd7938']` →
+    `queue = controller.add(fn_488.loc_1822).readPointer()` → 72-byte
+    movement command buffer (`writeByteArray`, `getNative(...,'ulong')`,
+    submit); on success `lastMoveAt = now`, `counters[3]++` (moves).
+12. `fn_260` createTracker(options = {}) — the trickshot tracker factory:
+    `capacity = Math.max(32, Math.min(2048,
+    options['_$18bf150356dd129b8567a861'] || 1000))`, injectable clock
+    `options['_$3fa7ce82ce60e5b579e8b679'] || Date.now`, mode default 3
+    (`options['_$959ddfbde0867dbe30d9b573'] === undefined ? 3 : …`);
+    returns `{path: fn_2860 (5-arg), reset: fn_550, getState: fn_2448}`;
+    internal closures fn_106 (sample push), fn_1634, fn_185.
+
+### Remaining boundaries (verified, next pass)
+
+`fn_2163` solvePlan internals (4552 bclen; input contract verified: samples
+isArray, length 2..128, every |x|,|y| ≤ 100000, hypot segment math, output
+plan carries `clear`/`bounces`/`segments`/`length`), `fn_2705` genCandidates
+per-candidate scoring (fn_2479), `fn_500` goal data reader (fields
+`_$218f61af0ee6df51fa1f8b54`/`_$968ec73a6dbe36fd4c231937`), `fn_488.loc_204`
+goal-record factory (mouth geometry), fn_2584-family target solver
+(fn_488.loc_1109), `fn_696` full mouth-box hit test (null path
+reconstructed), `fn_187` tick gate, mortis subtree (fn_1876, fn_2446,
+fn_1544, fn_2209, fn_2202, fn_1785, fn_2392, fn_187, fn_2699).
 
 ## Key strings / constants
 
@@ -17,6 +163,15 @@ Ball kicking assist for Brawl Ball modes. Part of the ball/mortis runtime fn_109
 - `ballShots`
 - `brawlball`
 - `BALL ASSIST`
+- `_$3d06417b13e3de8271ddec7b` (scanBall range fn key)
+- `_$dee829f228dea43909e05fac` (ball entity reader)
+- `_$c9a016ba6774b7d955225dc7` (ball radius reader)
+- `_$a6dfc77d0b9aa3e800c141be` (ball speed reader)
+- `_$7f14c5e39a9f95a2c0939747` (motion pathStep callback)
+- `_$c104bf86b08ef1cf66fd7938` (move controller factory key)
+- `_$58430fd8e1966f9f86da588d` (goalRecord.aimTarget)
+- `_$4e18173a38b4a39e59b422bb` (goalRecord.isOpen)
+- `_$ad9c09d0feb7e97c78656fa9` (aimAtGoal ready flag)
 
 ## Functions (64 in closure subtrees of ['fn_109'])
 
