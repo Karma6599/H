@@ -565,16 +565,33 @@ native_import_5 = ptr) — resolve via the table tail, not fixed indexes.
 | `_$714df0306c0a460933d1027e` | trajectory.segments | fn_720 |
 | `_$e128c5e51c82801490c558f6` | trajectory.bounces | fn_720 |
 | `_$29994d6e8def9703d4199cf8` | trajectory.traveled | fn_720 |
-| `_$b332efb2c410f54ac71eb519` … `_$68e51a48152985c305e10cb0` | goalRecord cache-key fields | fn_2230 |
-| `_$58430fd8e1966f9f86da588d` | goalRecord field (aim target) | fn_554 |
+| `_$b332efb2c410f54ac71eb519` | goalRecord.mouthLeft (x threshold, inferred) | fn_2230/fn_696 |
+| `_$4e18173a38b4a39e59b422bb` | goalRecord.isOpen (truthy gate) | fn_696 #6368 |
+| `_$ce0e7d6f91bd18cc76b02fdc` | goalRecord.mouthLow (y low bound, inferred) | fn_2230/fn_696 |
+| `_$68e51a48152985c305e10cb0` | goalRecord.mouthHigh (y high bound) | fn_696 #6367 |
+| `_$58430fd8e1966f9f86da588d` | goalRecord.aimTarget | fn_554 |
+| `_$fe0d29032a1d1688a880deea` | sample.z (3rd float, 12-byte sim vertex) | fn_2475/fn_377 |
+| `_$f14bb127548e574dafce6ee1` | goalHit.traveled | fn_696 |
+| `_$6d12f1a9a60533b14555dd9f` | goalHit.overshoot (min of y clearances) | fn_696 |
+| `_$968ec73a6dbe36fd4c231937` | world field (fn_2166, unresolved) | fn_2166 #1831 |
 | `_$f56f9b43ac8287ccc401c21f` | ball record ptr field | fn_1393 mode 60920 |
 | `_$734363e3b20d0a80337163c3` | ball record super field | fn_1393 mode 60920 |
 | `_$0e3ac2d8132c986cec708e5b` | getState.override | fn_2185 |
 | `_$00048fca42ad884e02edbca3` | getState.goalStats | fn_2185 |
 | `_$c4ded82d77ca3ddba3c08633` | getState.actors | fn_2185 |
-| `_$9aaf7807f2beb73bf5bac405` | getState sub-object key | fn_2185 |
-| `_$a98a2cd19b0bb14864033c19` / `_$184d4b7cb933ff924596e975` | trickshot status fields | fn_2185 |
-| `_$d556cf8b61f8821e61fa2a87` | deps probe method | fn_1393 mode 53669 |
+| `_$9aaf7807f2beb73bf5bac405` | trickshot.live / getState.trackerState (same key twice) | fn_2185 |
+| `_$a98a2cd19b0bb14864033c19` / `_$184d4b7cb933ff924596e975` | trickshot.lastMoveAt / .seedPointer | fn_2185 |
+| `_$d556cf8b61f8821e61fa2a87` | deps.wantsShot (shot-intent probe) | fn_1393 mode 53669 |
+
+All API keys (fn_1393 dispatcher surface) renamed in ball.js:
+setEnabled `_$1458b5e5e1ba5d16cc261b4d`, setOverride `_$514b2e44ae09fa0ecd67bd1d`,
+applySaved `_$c6ca8052007e2c68b9ae8264`, followObjectivePath `_$bc76004c92d2d0c6739cb535`,
+aimAtGoal `_$47f9b36ab3340267421e67eb`, aimRedirectAndFire `_$b8a7ccdbc227265b239e0ecd`,
+executeShot `_$e694ae8516d24dc416980e75`, getTrickshotStatus `_$b0d4194ac6ed30fa2e422965`,
+refreshFlags `_$6d69041b3aa94b9618079139`, resetBallState `_$da4ce6f628bcda383190531b`,
+setMode `_$e1e1c61271274185cae840f6`, getState `_$814748ecc47856e7b144daa6`. Per
+the repo-wide rule (user mandate): NO raw `_$hash` survives in reconstructed
+code; this table is the decode dictionary and intentionally keeps them.
 
 ### Verified pipeline (byte-verified this session)
 
@@ -669,19 +686,108 @@ native_import_5 = ptr) — resolve via the table tail, not fixed indexes.
 - fn_260 createTracker: .reset() / .getState() / .path (5-arg) — the
   trickshot tracker (pending deep-read)
 
+### Trajectory overlay pipeline (session 5, byte-verified)
+
+Closure arithmetic for hook handlers (children of fn_2043, which is a
+child of fn_109): `get_var N` → N∈{0,1,2} = fn_2043 loc_N; 3 ≤ N < 186 →
+fn_109.loc_(N−3); N ≥ 186 → fn_488.loc_(N−169). For children of fn_109
+(pipeline functions): N < 183 → fn_109.loc_N; N ≥ 183 → fn_488.loc_(N−166).
+Verified against: features (113), genCandidates call (fn_2230 get_var 438 =
+fn_488 272), seedPointer write (put_var 128 in fn_2230 = put_var 131 in
+fn_1795), assist/trajectory ids (1800→fn_488 1631, 1596→fn_488 1427),
+sample stride (2406→fn_488 2237 = 4).
+
+fn_109 factory local→function table (fclosure sites, bytes 504–837):
+loc_34=fn_2620, loc_141=fn_1411 (reportError), loc_11=fn_918, loc_30=fn_293
+(getNative), loc_17=fn_1349, loc_88=fn_2699, loc_49=fn_1785, loc_132=fn_500,
+loc_2=fn_2166 (buildGoalRecord), loc_97=fn_623 (scanBall), loc_21=fn_2597,
+loc_43=fn_29, loc_33=fn_822, loc_77=fn_1526 (buildPlan), loc_122=fn_2046,
+loc_26=fn_1906, loc_3=fn_2230 (executeShot), loc_31=fn_1836, loc_164=fn_1846,
+loc_161=fn_332 (scanObjective), loc_83=fn_187, loc_115=fn_861, loc_96=fn_1544,
+loc_118=fn_2392, loc_53=fn_2209, loc_54=fn_2202, loc_41=fn_1876,
+loc_19=fn_2446, loc_163=fn_2205 (tick), loc_107=fn_554, loc_101=fn_1919,
+**loc_6=fn_68 (drawTrajectory)**, loc_82=fn_372, loc_92=fn_401 (detachHook),
+loc_103=fn_2043 (refreshHooks), loc_98=fn_505, loc_159=fn_136, loc_138=fn_2333,
+loc_94=fn_2364, loc_158=fn_1166, loc_25=fn_931, loc_20=fn_1393.
+
+fn_109 constant slots (factory block): loc_1=1, loc_8=3, loc_16=5,
+loc_40=2, loc_47=24 (VALUES state), loc_60=15 (draw native!), loc_71=0
+(scan RANGE), loc_81=0-init state = **notBefore** (fn_1795 is its only
+writer: now+500 when assist on), loc_100=1 (record samples slot),
+loc_116=26 (render ctx offset), loc_131=0 (record entry slot), loc_145=values,
+loc_150/loc_160=null (lazy draw buffers), loc_153=27 (2nd ctx offset),
+loc_32=new Map() (threadRecords).
+
+Handler `this` protocol (stashed between onEnter/onLeave; original uses
+numeric slots 1/2/3): this.threadId, this.record, this.outBuffer.
+
+- fn_1795 trajectorySystemOnEnter (hook 2 @ VALUES[13]): seedPointer =
+  args[0] (unconditional — this hook also feeds the assist); assist on →
+  notBefore = now+500; trajectory on → threadId stash, threadRecords.set(
+  threadId, [args[0], null]), and for both ctx offsets (VALUES[26]/[27]):
+  ptr = args[0].add(values[i]).readPointer(); if usable → ptr+8 writeU8(0)
+  (clear the render-context visibility byte so the game recomputes).
+- fn_566 trajectorySimOnEnter (hook 3 @ VALUES[14] = BALL_SHOT_NATIVE — the
+  SAME native buildShot wraps): gates x3.toInt32()===0, x1 usable,
+  x1.add(values[24]).readU8()===1 (ball entity active state byte),
+  threadRecords.get(currentThreadId) — records only exist inside a
+  system-hook window; stash record + this.context.x8 (arm64 indirect-result
+  register — the game receives the sample buffer through it).
+- fn_2475 trajectorySimOnLeave: buffer=*(x8), end=*(x8+8); span=end-buffer
+  ∈ [24, 12288] %12===0; sample i*12 {x, +4 y, +8 z} readFloat;
+  isFinite×3 && |x|,|y| ≤ 100000 else reject whole pass; record[1]=points
+  when ≥2 points.
+- fn_377 trajectorySystemOnLeave: thread guard (original compares the
+  stashed id to a tail global — opaque, never equal; honest form = the
+  undefined check); record get+delete; skip when features[11] (assist takes
+  precedence), require features[12] + record[1]; motion = snapshot ||
+  scanObjective(); scan = scanBall(motion, world.ball); segments =
+  fn_1069(record[1], scan[RANGE], motion.wallScan); fn_68(record[0],
+  segments); catch → reportError.
+- fn_1069 ballProjectTrajectory (fn_488.loc_1531, #1325, extracted to
+  work/ball/fns/fn_1069.txt): validate points array ≥2 + range>0;
+  traveled = Σ hypot over consecutive samples; budget = range − traveled
+  (<1 → []); direction from last two samples; fn_720(last, atan2(dy,dx),
+  budget, walls, null, 3); first segment fromX/fromY pulled back by
+  (dx/dist)*60 and (dy/dist)*60 (one ball radius); returns segments.
+- fn_68 drawTrajectory + fn_2794 writeTrajectoryPoint: segments ≤16,
+  seed usable; ctx = seed.add(values[26]).readPointer(); lazy buffers
+  Memory.alloc(32×12) + Memory.alloc(24); vertices {x@0, y@4, 0@8} ×
+  (1 + segments); header {ptr@0=points, ptr@8=end, ptr@16=end} (third
+  slot inferred 0/8/16); draw = getNative(15, 'void',
+  ['pointer','pointer','float','float','float'])(ctx, header, 100, 0, -1);
+  ctx+8 writeU8(1) (visibility on); counters[5]++ (trajectoryDraws —
+  confirmed: fn_109.loc_16=5 indexes the counters array).
+- Sample fields x/y confirmed literal atoms (#1577→'x', #1804→'y' via
+  #N→2N+1 calibration, anchors: #125→'iterator', #6464→'context',
+  #6465→'x1', #3407→segments atom 6815).
+- Unresolved fn_488 opaque constants (loc_0[...] indirection through the
+  caller's constants array): loc_2012 (extra points — derived 1: points =
+  1 + segments), loc_2031 (third header pointer — inferred 16), loc_2200
+  (header alloc size — inferred 24), loc_106 (points buffer capacity —
+  inferred 32 ≥ 17 max). Documented in ball.js constants.
+
 ### PENDING (verified boundaries, deep read next session)
 
 fn_2163 solvePlan (4552 bclen — the trajectory-vs-entities planner, the
 largest single boundary), fn_2705 genCandidates (1656), fn_623 scanBall
-(1271 — Map/readPointer entity walk), fn_2166 buildGoalRecord (820),
-fn_861 executeGoalMove (1447 — writes counters[3] 'moves'), fn_554
-aimAtGoal (1130 — atan2 + goal._$58430fd8 + fn_2584 internals), fn_1166
-followObjectivePath (281), the hook handlers fn_2714/fn_508/fn_1028/
-fn_1795/fn_377/fn_566/fn_2475/fn_729, the mortis subtree (fn_1876,
-fn_68, fn_2446, fn_1544, fn_2209, fn_2202, fn_1785, fn_2392, fn_500,
-fn_187, fn_2699, fn_332-adjacent), fn_260 tracker internals, and the
-battle-input goal side: fn_1572 goal branch + fn_1754 (args[1]/[2]/[5]/[6]
-rewrite on activateWeapon, documented in the anti_afk offsets map).
+(1271 — Map/readPointer entity walk), fn_2166 buildGoalRecord (820 —
+reads world `#4728`, world.battle, world.wallScan; produces {x, y,
+mouthLeft/isOpen/aimTarget/mouthLow/mouthHigh} per the fn_696 decode),
+fn_696 testGoalSegment (335 lines extracted to work/ball/fns — null path
+reconstructed; the full mouth-box hit test needs the goal session), fn_861
+executeGoalMove (1447 — writes counters[3] 'moves'), fn_554 aimAtGoal
+(1130 — atan2 + goalRecord.aimTarget + fn_2584 internals), fn_1166
+followObjectivePath (281), the goal/assist/mortis hook handlers
+fn_2714/fn_508/fn_1028/fn_729/fn_569, the mortis subtree (fn_1876,
+fn_2446, fn_1544, fn_2209, fn_2202, fn_1785, fn_2392, fn_500, fn_187,
+fn_2699, fn_332-adjacent), fn_260 tracker internals, and the battle-input
+goal side: fn_1572 goal branch + fn_1754 (args[1]/[2]/[5]/[6] rewrite on
+activateWeapon, documented in the anti_afk offsets map).
+
+RECONSTRUCTED in session 5 (trajectory overlay — see the pipeline section
+below): fn_1795/fn_377 (system hook), fn_566/fn_2475 (sim hook), fn_68 +
+fn_2794 (renderer), fn_1069 (projector, standalone fn_488 child #1325).
 
 ## auto_farm (features/autofarm.js) — session 3
 

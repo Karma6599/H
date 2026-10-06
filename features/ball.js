@@ -45,15 +45,42 @@ const BALL_PLAN_MS = 180;
 const BALL_SHOT_DELAY_MS = 70;
 const BALL_SHOT_COOLDOWN_MS = 500;
 
+// Trajectory overlay (feature 12) — the game runs its own ball-preview
+// simulation through the shared sim native (VALUES[14] = BALL_SHOT_NATIVE);
+// the hooks below capture those samples and extend them with the bounce
+// solver, then hand the polyline to the game's draw native (VALUES[15]).
+const BALL_TRAJECTORY_SYSTEM_NATIVE = 13;
+const BALL_DRAW_NATIVE = 15;
+const BALL_TRAJECTORY_CTX = 26;
+const BALL_TRAJECTORY_CTX_ALT = 27;
+const BALL_TRAJECTORY_HOLD_MS = 500;
+const BALL_TRAJECTORY_MAX_SPAN = 12288;
+const BALL_TRAJECTORY_MAX_COORD = 100000;
+const BALL_DRAW_MAX_SEGMENTS = 16;
+const BALL_DRAW_MAX_POINTS = 32;
+const BALL_DRAW_HEADER_SIZE = 24;
+const BALL_SAMPLE_Z = 8;
+const BALL_CTX_FLAG = 8;
+const BALL_RADIUS = 60;
+
 function ballClamp(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
 
 function ballTestSegment(goal, x0, y0, x1, y1, traveled) {
+  // Pending boundary: fn_696 testGoalSegment (fn_488 slot 2315) — returns
+  // a hit record {x, y, traveled, overshoot} from the goal's mouth box
+  // (goalRecord mouthLeft/mouthLow/mouthHigh/isOpen fields). The draw
+  // pipeline always passes goal = null, so the null path below is exact;
+  // the full geometry test belongs to the goal/solvePlan session.
+  if (!goal) return null;
   return undefined;
 }
 
-function ballComputeTrajectory(from, angle, budget, world, goal, maxBounces) {
+function ballComputeTrajectory(from, angle, budget, walls, goal, maxBounces) {
+  // fn_720 — bounce solver. `walls` is the motion snapshot's wall scanner
+  // (motion.wallScan): it supplies raycast, blockedTest and the projectile
+  // collision layer constant.
   const limit = maxBounces === undefined ? BALL_MAX_BOUNCES : maxBounces;
   let x = from.x;
   let y = from.y;
@@ -67,20 +94,20 @@ function ballComputeTrajectory(from, angle, budget, world, goal, maxBounces) {
 
   while (remaining >= 1 && bounce <= limit) {
     try {
-      let dist = world['_$db1aebbcc3781e90ec4d0374'](
-        x, y, cos, sin, remaining, world.BLOCKS_PROJECTILES);
+      let dist = walls.raycast(
+        x, y, cos, sin, remaining, walls.BLOCKS_PROJECTILES);
       dist = ballClamp(dist, 0, budget);
       const hitWall = dist < budget - 1;
       const nx = x + cos * dist;
       const ny = y + sin * dist;
       goalHit = ballTestSegment(goal, x, y, nx, ny, traveled);
       segments.push({
-        '_$ad725bbc38340cfb658c63d7': x,
-        '_$787b254d2864fa8d7364ab20': y,
-        '_$4e7d619ede596809fcfe0943': nx,
-        '_$2232fa0c6e6ae79fefce1293': ny,
-        '_$0ff0e85e9f6fdf1ad94dbc96': hitWall,
-        '_$689dcf5e83dcbcc745bdd7c8': bounce,
+        fromX: x,
+        fromY: y,
+        toX: nx,
+        toY: ny,
+        hitWall: hitWall,
+        index: bounce,
         length: dist,
       });
       if (goalHit) break;
@@ -90,11 +117,11 @@ function ballComputeTrajectory(from, angle, budget, world, goal, maxBounces) {
 
       let blockedX = false;
       let blockedY = false;
-      if (typeof world['_$f431d070cad79e4a094070ae'] === 'function') {
-        blockedX = !!world['_$f431d070cad79e4a094070ae'](
-          nx + cos * BALL_BOUNCE_PROBE, ny, world.BLOCKS_PROJECTILES);
-        blockedY = !!world['_$f431d070cad79e4a094070ae'](
-          nx, ny + sin * BALL_BOUNCE_PROBE, world.BLOCKS_PROJECTILES);
+      if (typeof walls.blockedTest === 'function') {
+        blockedX = !!walls.blockedTest(
+          nx + cos * BALL_BOUNCE_PROBE, ny, walls.BLOCKS_PROJECTILES);
+        blockedY = !!walls.blockedTest(
+          nx, ny + sin * BALL_BOUNCE_PROBE, walls.BLOCKS_PROJECTILES);
       }
       if (blockedX && !blockedY) {
         cos = -cos;
@@ -117,22 +144,67 @@ function ballComputeTrajectory(from, angle, budget, world, goal, maxBounces) {
   }
 
   return {
-    '_$714df0306c0a460933d1027e': segments,
+    segments: segments,
     goal: goalHit,
-    '_$1516bfd127113e7a34d79575': angle,
-    '_$e128c5e51c82801490c558f6': Math.max(0, segments.length - 1),
-    '_$29994d6e8def9703d4199cf8': traveled,
+    candidate: angle,
+    bounces: Math.max(0, segments.length - 1),
+    traveled: traveled,
   };
+}
+
+function ballProjectTrajectory(points, range, walls) {
+  // fn_1069 — extends the game's sampled ball path. Measures how much of
+  // the ball's travel range the sampled polyline already covers, then
+  // simulates the remainder from the last two samples' direction with the
+  // bounce solver. The first segment's start is pulled back by one ball
+  // radius so the drawn line begins at the ball's edge. Returns the segment
+  // list for drawing ([] when nothing can be projected).
+  if (!Array.isArray(points) || points.length < 2 || !(range > 0)) {
+    return [];
+  }
+
+  let traveled = 0;
+  for (let i = 1; i < points.length; i++) {
+    traveled += Math.hypot(
+      points[i].x - points[i - 1].x,
+      points[i].y - points[i - 1].y);
+  }
+
+  const budget = range - traveled;
+  if (budget < 1) {
+    return [];
+  }
+
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const dx = last.x - prev.x;
+  const dy = last.y - prev.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1) {
+    return [];
+  }
+
+  const trajectory = ballComputeTrajectory(
+    last, Math.atan2(dy, dx), budget, walls, null, BALL_MAX_BOUNCES);
+  if (!trajectory) {
+    return [];
+  }
+
+  if (trajectory.segments.length) {
+    trajectory.segments[0].fromX -= (dx / dist) * BALL_RADIUS;
+    trajectory.segments[0].fromY -= (dy / dist) * BALL_RADIUS;
+  }
+  return trajectory.segments;
 }
 
 function createBallRuntime(deps) {
   const basePointer = ptr(deps.base);
-  const inputGate = deps['_$0f5ca3bf508eb8602288884d'];
+  const inputGate = deps.inputGate;
   const baseAccessor = deps.log || dispatchMortis;
   const values = Object.values(ballOffsets).concat([screen]);
 
   if (!inputGate ||
-      typeof inputGate['_$8909080e7460c4c9d13103f4'] !== 'function') {
+      typeof inputGate.scanBattle !== 'function') {
     throw new Error(
       'Ball/Mortis functions require the shared dodge library to be loaded');
   }
@@ -177,6 +249,12 @@ function createBallRuntime(deps) {
   let stateFlag = null;
   let stateSeq = 0;
   let simNative = null;
+  // Trajectory overlay state: per-thread [seed, samples] records handed
+  // from the system hook (fn_1795/fn_377) to the sim hook (fn_566/fn_2475),
+  // plus the lazily-allocated draw buffers (fn_68).
+  const threadRecords = new Map();
+  let drawPointsBuffer = null;
+  let drawHeaderBuffer = null;
   const counters = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const tracker = createTracker();
 
@@ -186,8 +264,8 @@ function createBallRuntime(deps) {
   }
 
   function releaseGate() {
-    if (inputGate['_$371edf41cefa490bf13678bf']) {
-      inputGate['_$371edf41cefa490bf13678bf'](BALL_INPUT_FLAGS[5]);
+    if (inputGate.releaseAlt) {
+      inputGate.releaseAlt(BALL_INPUT_FLAGS[5]);
     }
   }
 
@@ -266,8 +344,8 @@ function createBallRuntime(deps) {
       return {
         range: arg[BALL_RECORD_RANGE],
         radius: arg[BALL_RECORD_RADIUS],
-        '_$f56f9b43ac8287ccc401c21f': arg[BALL_RECORD_PTR],
-        '_$734363e3b20d0a80337163c3': arg[BALL_RECORD_SUPER],
+        ptr: arg[BALL_RECORD_PTR],
+        super: arg[BALL_RECORD_SUPER],
         speed: arg[BALL_RECORD_SPEED],
         travelType: arg[BALL_RECORD_TRAVEL],
       };
@@ -275,26 +353,26 @@ function createBallRuntime(deps) {
     if (mode === 54397) {
       return {
         mode: BALL_STATUS_LABELS[statusIndex],
-        '_$318e774f577f9afc8b95ce22':
+        range:
           ballScan ? ballScan[BALL_RECORD_RANGE] : 0,
-        '_$b38091f1ff88ae1c3f5fbe69':
+        radius:
           ballScan ? ballScan[BALL_RECORD_RADIUS] : 0,
-        '_$e05048a72a2f6429d78842e1':
+        speed:
           ballScan ? ballScan[BALL_RECORD_SPEED] : 0,
         ball: ballRecord ? { ...ballRecord } : ballRecord,
         goal: goalRecord ? { ...goalRecord } : goalRecord,
-        '_$facb0b9161800618215c7b9b': paused,
-        '_$6702b356ca251f62e1f6cff5': mark ? { ...mark } : mark,
+        paused: paused,
+        mark: mark ? { ...mark } : mark,
         battle: battleKey,
       };
     }
     if (mode === 53669) {
       return !!(override ||
-        inputGate['_$9b5fe44f7c935bfb890bcb65']() ||
-        (inputGate['_$6c469dfb2ddb1688dfd11754'] &&
-          inputGate['_$6c469dfb2ddb1688dfd11754'](BALL_INPUT_FLAGS[5])) ||
-        (deps['_$d556cf8b61f8821e61fa2a87'] &&
-          deps['_$d556cf8b61f8821e61fa2a87']()));
+        inputGate.angle() ||
+        (inputGate.isLocked &&
+          inputGate.isLocked(BALL_INPUT_FLAGS[5])) ||
+        (deps.wantsShot &&
+          deps.wantsShot()));
     }
     return undefined;
   }
@@ -306,11 +384,10 @@ function createBallRuntime(deps) {
   function scanObjective(now, provided) {
     if (disposed) return null;
     const motion = provided === undefined
-      ? inputGate['_$8909080e7460c4c9d13103f4'](100)
+      ? inputGate.scanBattle(100)
       : provided;
-    if (!motion || !motion['_$f846c8d5ebac9d78eb10094e'] ||
-        !motion['_$f846c8d5ebac9d78eb10094e']
-          ['_$528d9b3e2016a372636f303c']) {
+    if (!motion || !motion.world ||
+        !motion.world.counterA) {
       resetBattleState();
       return null;
     }
@@ -325,15 +402,15 @@ function createBallRuntime(deps) {
   }
 
   function loadBattleState(motion, now) {
-    const world = motion['_$f846c8d5ebac9d78eb10094e'];
-    if (world['_$528d9b3e2016a372636f303c'] === counterA) return undefined;
-    counterA = world['_$528d9b3e2016a372636f303c'];
+    const world = motion.world;
+    if (world.counterA === counterA) return undefined;
+    counterA = world.counterA;
     counters[1]++;
 
     const rawBall = world.ball;
     const ball = rawBall && Number.isFinite(rawBall.x) &&
       Number.isFinite(rawBall.y) ? rawBall : null;
-    paused = (world['_$318627662c00525b8396ba45'] === true);
+    paused = (world.paused === true);
 
     if (!validateWorld(world, ball, paused)) {
       ballScan = null;
@@ -351,7 +428,7 @@ function createBallRuntime(deps) {
         x: ball.x,
         y: ball.y,
         name: ball.name || 'BALL',
-        radius: ball.radius || 60,
+        radius: ball.radius || BALL_RADIUS,
       };
       counters[2]++;
     } else {
@@ -388,10 +465,10 @@ function createBallRuntime(deps) {
     if (!motion || !features[BALL_ASSIST] || !paused ||
         !goalRecord || !ballScan ||
         !isUsablePointer(
-          motion['_$f846c8d5ebac9d78eb10094e'].ownCharacter)) {
+          motion.world.ownCharacter)) {
       return false;
     }
-    const world = motion['_$f846c8d5ebac9d78eb10094e'];
+    const world = motion.world;
     const stateByte =
       world.ownCharacter.add(values[BALL_VALUES_STATE]).readU8();
     if (stateByte !== 1) return false;
@@ -399,9 +476,9 @@ function createBallRuntime(deps) {
       !!ballScan[BALL_RECORD_SUPER]) {
       return false;
     }
-    if (world['_$5cdf233d1f0533b803925e62'] === false) return false;
-    if (!world['_$9d4347156302d81acf9ba18e']) return false;
-    if (Date.now() - world['_$528d9b3e2016a372636f303c'] >
+    if (world.canAim === false) return false;
+    if (!world.engaged) return false;
+    if (Date.now() - world.counterA >
       BALL_WORLD_MS) {
       return false;
     }
@@ -415,12 +492,12 @@ function createBallRuntime(deps) {
   }
 
   function buildShot(motion, seedPtr, angle) {
-    const world = motion['_$f846c8d5ebac9d78eb10094e'];
+    const world = motion.world;
     const scan = ballScan;
     if (!scan || !isUsablePointer(scan[BALL_RECORD_PTR]) ||
         !isUsablePointer(seedPtr) ||
         !isUsablePointer(world.ownCharacter) ||
-        !world['_$318627662c00525b8396ba45']) {
+        !world.paused) {
       return null;
     }
 
@@ -471,10 +548,10 @@ function createBallRuntime(deps) {
       simulations++;
 
       return {
-        '_$8aac275e9efd9df08bf4e497': samples,
+        samples: samples,
         x: shotX,
         y: shotY,
-        '_$7c3ed73d9ad0cba36b5f85d5': { x: ownX, y: ownY },
+        from: { x: ownX, y: ownY },
       };
     } finally {
       if (simResult && isUsablePointer(simResult[0])) {
@@ -486,45 +563,44 @@ function createBallRuntime(deps) {
   function buildPlan(motion, seedPtr, angle, now) {
     const shot = buildShot(motion, seedPtr, angle);
     if (!shot) return null;
-    const world = motion['_$f846c8d5ebac9d78eb10094e'];
+    const world = motion.world;
     const entities = [];
-    for (const entity of world['_$af0b510be1001a7fe0745937'] || []) {
+    for (const entity of world.entities || []) {
       entities[entities.length] = entity;
     }
-    for (const projectile of world['_$97f3931e41a39623e7fd15f6'] || []) {
+    for (const projectile of world.projectiles || []) {
       entities[entities.length] = projectile;
     }
     const plan = solvePlan(
-      shot['_$8aac275e9efd9df08bf4e497'], goalRecord,
+      shot.samples, goalRecord,
       readBallRecord(ballScan), entities);
     if (!plan) return null;
     return Object.assign(plan, {
       x: shot.x,
       y: shot.y,
-      '_$7c3ed73d9ad0cba36b5f85d5': shot['_$7c3ed73d9ad0cba36b5f85d5'],
-      '_$1516bfd127113e7a34d79575': angle,
+      from: shot.from,
+      candidate: angle,
       at: now,
-      '_$a5fa94f845791b9de23e2996': String(seedPtr),
+      seedKey: String(seedPtr),
       battle: String(motion.battle),
-      '_$c62c7d7675dd2c6e78448d06': String(world.ball && world.ball.gid),
+      ballKey: String(world.ball && world.ball.gid),
       super: ballScan[BALL_RECORD_SUPER],
     });
   }
 
   function refreshPlan(motion, seedPtr, now) {
     if (!isShotReady(motion) || !activePlan ||
-        activePlan['_$a5fa94f845791b9de23e2996'] !== String(seedPtr) ||
+        activePlan.seedKey !== String(seedPtr) ||
         activePlan.battle !== String(motion.battle) ||
-        activePlan['_$c62c7d7675dd2c6e78448d06'] !==
-          String(motion['_$f846c8d5ebac9d78eb10094e'].ball &&
-            motion['_$f846c8d5ebac9d78eb10094e'].ball.gid) ||
+        activePlan.ballKey !==
+          String(motion.world.ball && motion.world.ball.gid) ||
         activePlan.super !== ballScan[BALL_RECORD_SUPER] ||
         now - activePlan.at > BALL_PLAN_MS) {
       activePlan = null;
       return null;
     }
     const next = buildPlan(
-      motion, seedPtr, activePlan['_$1516bfd127113e7a34d79575'], now);
+      motion, seedPtr, activePlan.candidate, now);
     if (next && next.clear) {
       activePlan = next;
       lastPlan = next;
@@ -550,17 +626,17 @@ function createBallRuntime(deps) {
         return undefined;
       }
       seedPointer = seedPtr;
-      const world = motion['_$f846c8d5ebac9d78eb10094e'];
+      const world = motion.world;
 
       const key = [
         battleKey,
         world.ball.gid,
         ballScan[BALL_RECORD_SUPER],
-        goalRecord['_$b332efb2c410f54ac71eb519'],
-        goalRecord['_$4e18173a38b4a39e59b422bb'],
-        goalRecord['_$58430fd8e1966f9f86da588d'],
-        goalRecord['_$ce0e7d6f91bd18cc76b02fdc'],
-        goalRecord['_$68e51a48152985c305e10cb0'],
+        goalRecord.mouthLeft,
+        goalRecord.isOpen,
+        goalRecord.aimTarget,
+        goalRecord.mouthLow,
+        goalRecord.mouthHigh,
       ].join(':');
       if (key !== cacheKey) {
         resetBallState();
@@ -574,8 +650,8 @@ function createBallRuntime(deps) {
       }
       if (!plan) {
         const own = {
-          x: world['_$9b2f2ebaccfa50d0600446ce'],
-          y: world['_$ac68381d82cf0eedd9c6a20a'],
+          x: world.ownX,
+          y: world.ownY,
         };
         candidates = genCandidates(own, goalRecord,
           projectSnapshot(motion));
@@ -604,9 +680,9 @@ function createBallRuntime(deps) {
         return undefined;
       }
 
-      const slot = inputGate['_$77f59e9cd494da780b769563']();
+      const slot = inputGate.getActiveSlot();
       if (slot && validateSlot(slot) !== 5) return undefined;
-      if (!inputGate['_$a0e27a7cb561024288852db2'](
+      if (!inputGate.probeGate(
         BALL_INPUT_FLAGS[5], 100)) {
         return undefined;
       }
@@ -640,15 +716,14 @@ function createBallRuntime(deps) {
     const motion = scanObjective(at, context);
     if (!motion || !paused || !ballScan ||
         !Number.isFinite(x) || !Number.isFinite(y) ||
-        at - motion['_$f846c8d5ebac9d78eb10094e']
-          ['_$528d9b3e2016a372636f303c'] > BALL_WORLD_MS) {
+        at - motion.world.counterA > BALL_WORLD_MS) {
       return false;
     }
-    const world = motion['_$f846c8d5ebac9d78eb10094e'];
+    const world = motion.world;
     const ownCharacter = world.ownCharacter;
     if (!isUsablePointer(ownCharacter) ||
         ownCharacter.add(values[BALL_VALUES_STATE]).readU8() !== 1 ||
-        world['_$5cdf233d1f0533b803925e62'] === false) {
+        world.canAim === false) {
       return false;
     }
 
@@ -683,6 +758,184 @@ function createBallRuntime(deps) {
     return fired;
   }
 
+  function trajectorySystemOnEnter(args) {
+    // fn_1795 — hook 2 onEnter on the trajectory system update native
+    // (VALUES[13]). Stashes the seed pointer for the whole runtime, holds
+    // assist shots for 500 ms while a trajectory pass runs, and — when the
+    // trajectory overlay is enabled — opens the per-thread record and
+    // clears the render contexts' visibility byte so the game recomputes
+    // its ball preview instead of reusing the stale frame.
+    seedPointer = args[0];
+    if (features[BALL_ASSIST]) {
+      notBefore = Date.now() + BALL_TRAJECTORY_HOLD_MS;
+    }
+    if (!features[BALL_TRAJECTORY]) {
+      return;
+    }
+    const threadId = Process.getCurrentThreadId();
+    this.threadId = threadId;
+    threadRecords.set(threadId, [args[0], null]);
+    for (const index of [BALL_TRAJECTORY_CTX, BALL_TRAJECTORY_CTX_ALT]) {
+      const context = args[0].add(values[index]).readPointer();
+      if (isUsablePointer(context)) {
+        context.add(BALL_CTX_FLAG).writeU8(0);
+      }
+    }
+  }
+
+  function trajectorySystemOnLeave() {
+    // fn_377 — hook 2 onLeave. The game's trajectory pass has finished; if
+    // the sim hook captured a fresh sample list for this thread, extend it
+    // with the bounce solver and draw the projected path. The original's
+    // first gate is an opaque thread comparison (tail global vs the stored
+    // id — never equal); the undefined check below is the honest form.
+    // Ball assist takes precedence: when it is enabled the overlay stays
+    // off and the samples are only used for shot timing.
+    const threadId = this.threadId;
+    if (threadId === undefined) {
+      return;
+    }
+    const record = threadRecords.get(threadId);
+    threadRecords.delete(threadId);
+    if (features[BALL_ASSIST] || !features[BALL_TRAJECTORY] ||
+        !record || !record[1]) {
+      return;
+    }
+    try {
+      const motion = snapshot || scanObjective();
+      if (!motion) {
+        return;
+      }
+      const scan = scanBall(motion, motion.world.ball);
+      if (!scan) {
+        return;
+      }
+      const segments = ballProjectTrajectory(
+        record[1], scan[BALL_RECORD_RANGE], motion.wallScan);
+      drawTrajectory(record[0], segments);
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  function trajectorySimOnEnter() {
+    // fn_566 — hook 3 onEnter on the shared trajectory simulation native
+    // (VALUES[14] = BALL_SHOT_NATIVE, the same one buildShot calls).
+    // Only intercepts calls in the x3 == 0 mode whose ball entity is
+    // active, and only while a trajectory pass is open on this thread.
+    // x8 is the arm64 indirect-result register: the game receives the
+    // sample buffer through it.
+    if (this.context.x3.toInt32() !== 0) {
+      return;
+    }
+    const ballPtr = this.context.x1;
+    if (!isUsablePointer(ballPtr)) {
+      return;
+    }
+    if (ballPtr.add(values[BALL_VALUES_STATE]).readU8() !== 1) {
+      return;
+    }
+    const record = threadRecords.get(Process.getCurrentThreadId());
+    if (!record) {
+      return;
+    }
+    this.record = record;
+    this.outBuffer = this.context.x8;
+  }
+
+  function trajectorySimOnLeave() {
+    // fn_2475 — hook 3 onLeave. Reads the {start, end} buffer pointers the
+    // simulation produced and samples the 12-byte {x, y, z} floats into
+    // the thread record for the projector. Any non-finite or out-of-range
+    // coordinate rejects the whole pass (matches the original's early
+    // return, not a partial list).
+    const record = this.record;
+    const outBuffer = this.outBuffer;
+    if (!record || !isUsablePointer(outBuffer)) {
+      return;
+    }
+    try {
+      const buffer = outBuffer.readPointer();
+      const end = outBuffer.add(BALL_SAMPLE_Z).readPointer();
+      if (!isUsablePointer(buffer) || !isUsablePointer(end)) {
+        return;
+      }
+      const span = end.sub(buffer).toInt32();
+      if (span < BALL_SIM_MIN || span > BALL_TRAJECTORY_MAX_SPAN ||
+          (span % BALL_SIM_STRIDE) !== 0) {
+        return;
+      }
+
+      const points = [];
+      for (let i = 0; i < span / BALL_SIM_STRIDE; i++) {
+        const sample = buffer.add(i * BALL_SIM_STRIDE);
+        const x = sample.readFloat();
+        const y = sample.add(BALL_SAMPLE_STRIDE).readFloat();
+        const z = sample.add(BALL_SAMPLE_Z).readFloat();
+        if (!Number.isFinite(x) || !Number.isFinite(y) ||
+            !Number.isFinite(z) ||
+            Math.abs(x) > BALL_TRAJECTORY_MAX_COORD ||
+            Math.abs(y) > BALL_TRAJECTORY_MAX_COORD) {
+          return;
+        }
+        points.push({ x: x, y: y, z: z });
+      }
+      if (points.length >= 2) {
+        record[1] = points;
+      }
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  function writeTrajectoryPoint(points, index, x, y) {
+    // fn_2794 — one 12-byte {x, y, 0} vertex in the draw buffer; the
+    // overlay polyline is 2D so the third float is forced to zero.
+    const vertex = points.add(index * BALL_SIM_STRIDE);
+    vertex.writeFloat(x);
+    vertex.add(BALL_SAMPLE_STRIDE).writeFloat(y);
+    vertex.add(BALL_SAMPLE_Z).writeFloat(0);
+  }
+
+  function drawTrajectory(seed, segments) {
+    // fn_68 — renders a trajectory polyline through the game's own draw
+    // native (VALUES[15]) and flips the render context's visibility byte.
+    // Buffers are allocated once and reused across draws. Returns true
+    // when the path was drawn.
+    if (!segments.length || segments.length > BALL_DRAW_MAX_SEGMENTS ||
+        !isUsablePointer(seed)) {
+      return false;
+    }
+    const context = seed.add(values[BALL_TRAJECTORY_CTX]).readPointer();
+    if (!isUsablePointer(context)) {
+      return false;
+    }
+    if (!drawPointsBuffer) {
+      drawPointsBuffer =
+        Memory.alloc(BALL_DRAW_MAX_POINTS * BALL_SIM_STRIDE);
+      drawHeaderBuffer = Memory.alloc(BALL_DRAW_HEADER_SIZE);
+    }
+    const points = drawPointsBuffer;
+    const header = drawHeaderBuffer;
+
+    writeTrajectoryPoint(points, 0, segments[0].fromX, segments[0].fromY);
+    for (let i = 0; i < segments.length; i++) {
+      writeTrajectoryPoint(
+        points, i + 1, segments[i].toX, segments[i].toY);
+    }
+    const end = points.add((segments.length + 1) * BALL_SIM_STRIDE);
+    header.writePointer(points);
+    header.add(BALL_SAMPLE_Z).writePointer(end);
+    header.add(BALL_SAMPLE_Z + BALL_SAMPLE_STRIDE).writePointer(end);
+
+    getNative(BALL_DRAW_NATIVE, 'void',
+      ['pointer', 'pointer', 'float', 'float', 'float'])(
+      context, header, 100, 0, -1);
+    context.add(BALL_CTX_FLAG).writeU8(1);
+    counters[5]++;  // trajectoryDraws
+    return true;
+  }
+
   function tick(seedPtr, now) {
     const at = now === undefined ? Date.now() : now;
     if (disposed || ticked ||
@@ -701,17 +954,11 @@ function createBallRuntime(deps) {
         }
         counters[0]++;
         if (features[BALL_GOAL] && mark) {
-          const path = tracker['_$4db7ddfaa51628503ec7c4a9'](
-            {
-              x: motion['_$f846c8d5ebac9d78eb10094e']
-                ['_$9b2f2ebaccfa50d0600446ce'],
-              y: motion['_$f846c8d5ebac9d78eb10094e']
-                ['_$ac68381d82cf0eedd9c6a20a'],
-            },
+          const path = tracker.path(
+            { x: motion.world.ownX, y: motion.world.ownY },
             mark,
-            motion['_$b11b5e14c741fc4cdea61960'],
-            motion['_$f846c8d5ebac9d78eb10094e']
-              ['_$26b6329ef32390aec0c3ddb2'],
+            motion.wallScan,
+            motion.world.navGrid,
             battleKey);
           if (path) {
             executeGoalMove(motion, path, at);
@@ -730,10 +977,8 @@ function createBallRuntime(deps) {
     return {
       status: TRICKSHOT_MODE_TABLE[trickshotMode],
       ball: {
-        x: snapshot ? snapshot['_$f846c8d5ebac9d78eb10094e']
-          ['_$9b2f2ebaccfa50d0600446ce'] : undefined,
-        y: snapshot ? snapshot['_$f846c8d5ebac9d78eb10094e']
-          ['_$ac68381d82cf0eedd9c6a20a'] : undefined,
+        x: snapshot ? snapshot.world.ownX : undefined,
+        y: snapshot ? snapshot.world.ownY : undefined,
       },
     };
   }
@@ -750,8 +995,8 @@ function createBallRuntime(deps) {
 
   function setOverride(on) {
     override = !!on;
-    if (override && inputGate['_$22320225cdd7c427d4b8d3cb']) {
-      inputGate['_$22320225cdd7c427d4b8d3cb'](BALL_INPUT_FLAGS[5]);
+    if (override && inputGate.notifyRejected) {
+      inputGate.notifyRejected(BALL_INPUT_FLAGS[5]);
     }
     return override;
   }
@@ -765,6 +1010,10 @@ function createBallRuntime(deps) {
   }
 
   function refreshHooks() {
+    // fn_2043 — per-feature Interceptor attach/detach. The trajectory
+    // handlers (hooks 2 and 3) are reconstructed in this module; the goal,
+    // assist and mortis handlers still live behind the ballHookHandlers
+    // boundary (fn_2714/fn_508, fn_1028, fn_729/fn_569).
     if (features[BALL_GOAL] && !hooks.has(0)) {
       warmNatives([11]);
       attachHook(0, 11, {
@@ -780,17 +1029,17 @@ function createBallRuntime(deps) {
     }
     if (features[BALL_TRAJECTORY]) {
       if (!hooks.has(2)) {
-        warmNatives([13]);
-        attachHook(2, 13, {
-          onEnter: ballHookHandlers.trajectoryA.onEnter,
-          onLeave: ballHookHandlers.trajectoryA.onLeave,
+        warmNatives([BALL_TRAJECTORY_SYSTEM_NATIVE]);
+        attachHook(2, BALL_TRAJECTORY_SYSTEM_NATIVE, {
+          onEnter: trajectorySystemOnEnter,
+          onLeave: trajectorySystemOnLeave,
         });
       }
       if (!hooks.has(3)) {
-        warmNatives([14, 15]);
-        attachHook(3, 14, {
-          onEnter: ballHookHandlers.trajectoryB.onEnter,
-          onLeave: ballHookHandlers.trajectoryB.onLeave,
+        warmNatives([BALL_SHOT_NATIVE, BALL_DRAW_NATIVE]);
+        attachHook(3, BALL_SHOT_NATIVE, {
+          onEnter: trajectorySimOnEnter,
+          onLeave: trajectorySimOnLeave,
         });
       }
     } else {
@@ -834,8 +1083,8 @@ function createBallRuntime(deps) {
       refreshHooks();
       if (key === BALL_ASSIST) {
         resetBallState();
-        if (inputGate['_$22320225cdd7c427d4b8d3cb']) {
-          inputGate['_$22320225cdd7c427d4b8d3cb'](BALL_INPUT_FLAGS[5]);
+        if (inputGate.notifyRejected) {
+          inputGate.notifyRejected(BALL_INPUT_FLAGS[5]);
         }
         if (on) {
           warmNatives([BALL_VALUES_FIRE, 14, BALL_FREE_NATIVE]);
@@ -874,19 +1123,19 @@ function createBallRuntime(deps) {
   function getState() {
     return {
       enabled: countEnabled(features),
-      '_$0e3ac2d8132c986cec708e5b': override,
+      override: override,
       disposed: disposed,
       trickshot: {
         mode: normalizeMode(trickshotModeValue),
         status: TRICKSHOT_MODE_TABLE[trickshotMode],
-        '_$a98a2cd19b0bb14864033c19': lastMoveAt,
-        '_$184d4b7cb933ff924596e975': seedPointer,
-        '_$9aaf7807f2beb73bf5bac405': getTrickshotStatus(),
+        lastMoveAt: lastMoveAt,
+        seedPointer: seedPointer,
+        live: getTrickshotStatus(),
         ...currentFlags(),
       },
-      '_$9aaf7807f2beb73bf5bac405': tracker.getState(),
-      '_$00048fca42ad884e02edbca3': goalStats ? { ...goalStats } : goalStats,
-      '_$c4ded82d77ca3ddba3c08633': Array.from(actorCache.keys())
+      trackerState: tracker.getState(),
+      goalStats: goalStats ? { ...goalStats } : goalStats,
+      actors: Array.from(actorCache.keys())
         .map(mapActorKey),
       ...Object.fromEntries(
         BALL_COUNTER_KEYS.map((key, index) => [key, counters[index]])),
@@ -928,21 +1177,21 @@ function createBallRuntime(deps) {
 
   const api = {
     has: hasFeature,
-    '_$1458b5e5e1ba5d16cc261b4d': setEnabled,
-    '_$514b2e44ae09fa0ecd67bd1d': setOverride,
-    '_$c6ca8052007e2c68b9ae8264': applySaved,
+    setEnabled: setEnabled,
+    setOverride: setOverride,
+    applySaved: applySaved,
     dispose: dispose,
     objective: objective,
-    '_$bc76004c92d2d0c6739cb535': followObjectivePath,
-    '_$47f9b36ab3340267421e67eb': aimAtGoal,
-    '_$b8a7ccdbc227265b239e0ecd': aimRedirectAndFire,
+    followObjectivePath: followObjectivePath,
+    aimAtGoal: aimAtGoal,
+    aimRedirectAndFire: aimRedirectAndFire,
     tick: tick,
-    '_$e694ae8516d24dc416980e75': executeShot,
-    '_$b0d4194ac6ed30fa2e422965': getTrickshotStatus,
-    '_$6d69041b3aa94b9618079139': refreshFlags,
-    '_$da4ce6f628bcda383190531b': resetBallState,
-    '_$e1e1c61271274185cae840f6': setMode,
-    '_$814748ecc47856e7b144daa6': getState,
+    executeShot: executeShot,
+    getTrickshotStatus: getTrickshotStatus,
+    refreshFlags: refreshFlags,
+    resetBallState: resetBallState,
+    setMode: setMode,
+    getState: getState,
   };
 
   return api;
