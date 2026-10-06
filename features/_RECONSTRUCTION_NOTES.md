@@ -398,3 +398,103 @@ built as 'Battle ' + Object.keys(OFFSETS)[index].
 - Conventions corrections verified this session: @stock[catch] = 'length',
   @stock[cause] = 'next', @stock[extends] = 'value', @stock[true] = 'return',
   #54 = 'done', #125 = Symbol.iterator, #31 = 'prototype', #126 = 'call'
+
+## auto_farm (features/autofarm.js) — session 3
+
+Real module subtree: fn_75 [#1048] (parent fn_488) + 83 descendants =
+84 functions, ~110KB bytecode (2x autododge). The auto-generated doc's
+fn_215 attribution is the menu config panel, not the module.
+
+### Delivered this session (byte-verified, line by line)
+
+Factory fn_75, API methods (fn_2426 start, fn_1633 setEnabled, fn_1013
+setOptions, fn_2750 refresh/poll, fn_236 getTimings, fn_1692 getState +
+fn_171/fn_291/fn_2633 mappers, fn_2282 resetStats, fn_490 dispose),
+lifecycle (fn_2864 stop, fn_462 cleanup, fn_1298 setReason, fn_2608
+reportError, fn_945 tick, fn_2321 menuTick, fn_1305 finalizeBattle,
+fn_2842 beginFollowBattle, fn_1294 updateBattleTrophies), helpers
+(fn_1577 runtime, fn_2442/fn_609 dispatchers, fn_254/fn_610/fn_2775/
+fn_1376/fn_591 thunks, fn_2432 readPosition, fn_980 clearBattle,
+fn_854 joinBattle, fn_2672 selectBrawler, fn_1461 skipResults,
+fn_686 refreshBrawlers, fn_599/fn_1077 brawler views, fn_2418
+updateFarm, fn_2468 registerLabel, fn_1880 tryMove, fn_77
+installBattleHook, fn_1383/fn_2686/fn_1774/fn_958/fn_1131/fn_438/
+fn_1573/fn_60/fn_641 predicates/finders, fn_2027 getOptionsSnapshot).
+
+### PENDING (verified boundaries, deep read next session)
+
+The in-battle AI engine: fn_2520 (2296 instr, processBattleResult) +
+fn_1965, fn_1825, fn_2411, fn_1616, fn_2728, fn_2417, fn_784, fn_2735,
+fn_614, fn_632, fn_1147, fn_2746, fn_2030, fn_1657 and their
+descendants (movement/attack/targeting micro-decisions). In autofarm.js
+these are collapsed into the executeBattlePlan boundary — the verified
+entry guards (slot record checks, gate locks, world-view fetch) are
+kept, the phase-level decisions (PHASES table 0-29) are reconstructed
+from the state machine, and the per-entity logic needs the next pass.
+Analysis artifacts with the full call graph + slot map are preserved in
+_AUTOFARM_ANALYSIS.md.
+
+### fn_75 state model (local slot N = loc_(N-1), arg1 = deps at 0)
+
+- slot59 started, slot79 enabled, slot109 disposed, slot175 revision
+- slot147 startedAt, slot38 lastError, slot13 reasonCode, slot87 ticking
+- slot120 gamePhase, slot32 idleStart, slot52 inBattleSince, slot53 joining
+- slot14 reconnected, slot123 lastTickAt, slot163 lastRefreshAt/pollAt
+- slot58/73 gadget timers, slot157 gadgetWindow, slot162 followAnchor
+- slot131 lastResultKey, slot69 selectedIdx, slot74 prevPick, slot153 prevIdx
+- slot95 session {0:startedAt..8:lastDelta}, slot63 farm {0:phaseA,1:phaseB,
+  2:target,3:reason,4:extra,5:counters[9]}, slot130 options
+- slot89 base, slot168 engine, slot164 api, slot139 hook, slot64 battle
+- 48 closures: slot1 fn_1461, slot33 fn_1965, slot122 fn_2728, slot81
+  fn_1374, slot114 fn_2411, slot146 fn_1305, slot26 fn_1577, slot99
+  fn_2864, slot108 fn_1298, slot174 fn_2608, slot180 fn_599, slot2
+  fn_686, slot23 fn_1294, slot115 fn_2746, slot96 fn_2432, slot24
+  fn_2775, slot85 fn_2418, slot25 fn_1376, slot48 fn_254, slot15
+  fn_610, slot121 fn_1147, slot117 fn_614, slot16 fn_1618, slot141
+  fn_2417, slot149 fn_2006, slot11 fn_2030, slot113 fn_2735, slot154
+  fn_302, slot70 fn_1880, slot104 fn_1657, slot5 fn_2468, slot143
+  fn_591, slot151 fn_1825, slot12 fn_1616, slot39 fn_632, slot72 fn_43,
+  slot137 fn_784, slot30 fn_2520, slot165 fn_2672, slot105 fn_854,
+  slot65 fn_980, slot50 fn_2842, slot129 fn_2321, slot67 fn_945,
+  slot84 fn_77, slot124 fn_462, slot92 fn_2442, slot118 fn_609
+
+### Hash -> name map (auto_farm API + engine contract)
+
+| hash | name | evidence |
+|---|---|---|
+| `_$326b40333128b4d78bc7e739` | start | fn_2426; UI label START; setEnabled calls it when !started |
+| `_$1458b5e5e1ba5d16cc261b4d` | setEnabled | fn_1633 (same hash as autospin/aimbot) |
+| `_$0e0a1d405897c8f747b1f7d5` | setOptions | fn_1013 (same hash as aimbot setTargeting / battle-side export) |
+| `_$98706144ef6b6cdb9e9923df` | refresh | fn_2750; engine has same-key brawler fetch (fn_686) |
+| `tick` (plain) | tick | fn_945 registered by name |
+| `_$cc9ef745c7beaad8fcdac2ea` | getTimings | fn_236 diagnostics probe |
+| `_$814748ecc47856e7b144daa6` | getState | fn_1692 (same hash as all modules) |
+| `_$6238cfbe1bb46d10e08d6328` | resetStats | fn_2282; UI label RESET STATS |
+| `_$22320225cdd7c427d4b8d3cb` | notifyRejected | gate method (reconfirmed from autospin) |
+| `_$2b1d9859a05368f4f18995bd` | checkPathBudget | gate method (reconfirmed) |
+| `_$9ddd79a3d86c3ad16c7dd44b` | watch | gate method (reconfirmed, installBattleHook) |
+| `_$4cb26d224db7394fc9cd96ef` | engine.isInBattle | probed in tick/menuTick/cleanup as battle presence |
+| `_$4de9456cc438a21076dea802` | engine.isFreshBattle | distinguishes fresh battle join |
+| `_$d38631472831ee8c61ada5ce` | engine.readGamePhase | gamePhase code (0 menu, 22 active screen) |
+| `_$98706144ef6b6cdb9e9923df` (engine) | engine.fetchBrawlers | raw brawler list |
+| `_$3da9401690a091035152af16` | engine.readOwnSlotIndex | selectBrawler arg |
+| `_$0a4631483a85e4a76340aef1` | engine.selectBrawler | by id, menuTick switch path |
+| `_$6975f2a66b3886417ebe1eb1` | engine.canStartBattle | matchmaking gate |
+| `_$bfb17577a7d7ce39f624c757` | engine.canUseGadget | pre-battle gadget check |
+| `_$60894cda100942d3c8f19083` | engine.useGadget | pre-battle gadget use |
+| `_$fe75ec1a10bd4566217717e6` | engine.useSuper | post-join super use |
+| `_$c9a9e1a7599900ccda418b62` | engine.startBattle | retry backoff path |
+| `_$4c25a9d3665c3d44671a6b7b` | engine.readBattleView | world/entities view |
+| `_$f846c8d5ebac9d78eb10094e` | engine.readWorld | motion snapshot view |
+| `_$9bd9ec1d23e38e503beb4bd7` / `_$f7c30d51cf08aedbf4c036af` / `_$735ecb99890a46f30c70f919` | mover.canMove / mover.ready / mover.step | battle[5505] movement helper trio |
+| `_$b1c1fd9b08c939a58752485f` / `_$2c8df886ef4dd948d6d253ae` / `_$9eeae86f99566aed4d53508f` | engine.install hook spec | installBattleHook args |
+| `_$f9114d7e00ca74bd99fe3676` | engine.reset | cleanup |
+| `_$65b3440634fedfa37cf93dc8` | gate.isLockedProbe | skipResults guard |
+| `_$514b2e44ae09fa0ecd67bd1d` | deps[6029].detach | hook detach |
+| `_$0cb1e6e12110cb6253361dd5` | deps[6029].readPendingResult | pending result probe |
+| `_$371edf41cefa490bf13678bf` | gate.releaseAlt | cleanup release |
+| `_$d59c5e089e027c280678dbe9` | options (snapshot key) | ctx object + getState |
+| `_$82d621c353e8b511991868b6` | gate (ctx key) | ctx object |
+| `_$959ddfbde0867dbe30d9b573` / `_$18bf150356dd129b8567a861` | rate tracker config (2, 1000) | fn_1005 arg |
+| `_$9152bb47b295cda5e547b11e` | createAutoFarm (registry export) | fn_488 exports table |
+| `_$63be9aca05f57f6cf9d7e4df`, `_$05ec49aa245383348d1cac58`, `_$42dff362b2a786e5a82f1f83`, `_$6efc9ae1149d626e5ff2b31b`, `_$45345448a194f2a58b520758`, `_$57cc67270c44b1649561b056`, `_$a1e84b831583247974945566`, `_$03518639e9f4c4742ffc4f05`, `_$fc173d49c1cb34effb0d77f1`, `_$e60f0ad6faf3d9ba0a4ff5d1`, `_$cc0099f13af4944a3117abd1`, `_$192fb677c15ae506902345a0`, `_$e8720c0b26835c8f5ce08de0`, `_$02ba24c1a53c7d4d51555801`, `_$668024f76431ae04690f70bf`, `_$9d77b14fac7a1211990eb2e1`, `_$785d5ef00166ecb2b43c23ed`, `_$245628981788bf6021e19fac` | getState/view field keys (kept verbatim; UI panel contract) | fn_1692/fn_1077 |
