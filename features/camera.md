@@ -42,3 +42,55 @@ Camera module. Modes: default / firstPerson (fov 50–100 default 75, eyeHeight 
 
 ```
 
+
+---
+
+## Reconstruction (session 8) — camera.js
+
+Fully decoded state/config model; see `camera.js`.
+
+### Feature identity
+
+- **Feature id: 23** (`fn_488.loc_1003`); plaintext global settings key
+  `'camera'` (global page schema index 8). The visual feature group is
+  `[17..23]` (`fn_488.loc_1468`) — the whole visual runtime is enabled when
+  any member is on (`fn_2632` contract).
+- The runtime lives in the shared visual runtime factory (`fn_888`, module
+  `_$d2eb449c51ae182c43e72335`); its 12-method API exposes
+  `getBattle` (fn_1725), `stop` (fn_1724), `scanBattle` (fn_1737),
+  `getState` (fn_476), `reset` (fn_1017), `dispose` (fn_838) + method
+  closures (raw keys in the notes).
+
+### Options model (fn_488 options category 5)
+
+- Keys: `[mode, fov, eyeHeight]`; mode enum `[chase = 0, firstPerson = 1]`.
+- Ranges: fov 50–100 (default 75), eyeHeight 150–600 (default 350), both
+  clamped through the shared clamp helper **fn_1516**
+  (`clampNumber(value, fallback, min, max)`, parent `fn_1332`).
+- Menu rows: `FIRST PERSON (PREVIEW)` / `FIELD OF VIEW` / `CAMERA HEIGHT`.
+- Mode changes emit **`camera:mode`** on the shared event bus.
+
+### getState (fn_476) — raw key → name
+
+| Raw runtime key | Renamed | Source |
+|---|---|---|
+| `_$139caf140d856c0b583a2eac` | `elementsCacheSize` | fn_888 loc_47 (Map) `.size` |
+| `_$9cb5def9e9346dc26e328372` | `nameCacheSize` | fn_888 loc_73 (Map) `.size` |
+| `_$48b7006b5c2f56969684dadf` | `renderContext` | fn_888 loc_51 `!== null` |
+| `_$311553cf806abf8537b6573f` | `cameraActive` | fn_888 loc_126 (bool) |
+| `_$c4ded82d77ca3ddba3c08633` | `optionViews` | `fromEntries(entries(loc_161).map(fn_756))` |
+| `hud._$9c67ec561dd50e93f6ee57a1` | `hud.records` | loc_61[11].map(fn_198) |
+| `hud._$fce936a06858eae4290c808b` | `hud.counterA` | loc_61[8] |
+| `hud._$cfd9dbcededa8c5bf1d56126` | `hud.counterB` | loc_61[9] |
+| `hud._$22b2391a5990cc24c75efe6b` | `hud.active` | loc_61[10] |
+| `hud._$97f3931e41a39623e7fd15f6` | `hud.elements` | `Array.from(loc_61[3].values()).map(fn_1853)` |
+
+The shared HUD record (`fn_888.loc_61`, 13 slots) and the `firstPerson`
+substate (`loc_153.getState()` through the universal `_$814748ecc47856e7b144daa6`
+= `getState` key) are modeled in camera.js deps.
+
+### Helpers reconstructed
+
+- `fn_1695` → `entryToPair` (fromEntries mapper, feature-id view)
+- `fn_756` → `mapConfigEntry` ([featureId, list] → [category, length])
+- `fn_1516` → `clampNumber`

@@ -88,6 +88,27 @@ header during reconstruction and are preserved in the git history of this repo
   gamePhase/retryOkCount/battleMs/phaseA/extra/counters/started/reason/
   brawlers/engineProbe/selectedIndex/power/unlocked + ctx gate/options +
   rate-tracker mode/capacity + install-spec onBattle/watch/interval/notify).
+- `camera.js` — COMPLETE for the camera slice (session 8): feature 23,
+  options model [mode/fov/eyeHeight] with enum [chase, firstPerson] and
+  clamp ranges, fn_476 getState view (all 10 raw keys renamed), fn_1516
+  clamp, fn_1695/fn_756 mappers, the visual group enable test, the
+  `camera:mode` event. The full visual runtime (fn_888) remains the
+  shared boundary documented in the notes.
+- `chromatic_name.js` — COMPLETE for the module shell + native bridge
+  (session 8): the byte-recovered 24-slot CModule trampoline source,
+  symbol pairs, allocSlot/freeSlot NativeFunction wrappers, the
+  `Memory.allocUtf8String('player_name')` marker registration, the
+  rainbow/solid palette engine with the full 10-key options model, and
+  the 12-method factory API (renamed; provisional names flagged). The 43
+  closure children (palette/name-rebuild internals) are a documented
+  boundary.
+- `charge_hud.js` — COMPLETE for the registration + module model
+  (session 8): feature 34, the byte-faithful fromCharCode key/label
+  construction, the [33/34/35] registration trio, defaults map (all ON),
+  the menu entry with numeric settings key, the super-state classification
+  (EMPTY/CHARGING/SUPER_READY/HYPER_READY) fed by the fn_514 weapon
+  resolver ('super weapon' slot), and the superAttempts/superShots
+  counter integration.
 
 ## Hash → name map (autospin)
 
@@ -1098,3 +1119,126 @@ _AUTOFARM_ANALYSIS.md.
 | `_$b1c1fd9b08c939a58752485f` | install spec 'onBattle' (positional) | installBattleHook arg 1 |
 | `_$2c8df886ef4dd948d6d253ae` | install spec 'interval' (positional) | installBattleHook arg |
 | `_$9eeae86f99566aed4d53508f` | install spec 'notify' (positional) | installBattleHook trailing arg |
+
+## camera / chromatic_name / charge_hud (features/camera.js, chromatic_name.js, charge_hud.js) — session 8
+
+The three requested visual features, decoded in one pass over the module
+registration layer (fn_488) + the visual runtime factory (fn_888) + the
+chromatic factory (fn_313).
+
+### Module registry (fn_488, get_var 8 namespace) — recovered map
+
+`fn_488` is a bundled module registry: `registry[HASH] = factory`. Recovered
+pairs (offset → hash → fn): 3d09f39c… → fn_1624, 7e9108db… → fn_2175
+(ScrollArea), 46fb66b5… → fn_1636 (getModuleByName/libc), 2822a424… →
+fn_1188 (avatar_frame_circle), e101f3a9… → **fn_313 (chromatic)**,
+d061cf29… → fn_807 (JIRGEAR_DATA_DIR), fbabd61f… → fn_1019 (SC5 load),
+a1f93b9b… → fn_1308 (file IO state machine), 52c4287f… → fn_51 (feature
+registry: battle/visual, `^[a-z][a-z0-9_]{0,63}$`, `feature:`), 1b2749a8…
+→ fn_2371 (sprites), 05c8cadc… → fn_2431 (battle stage), 020e9214… →
+fn_509 (dodge diagnostics), 462f00ba… → fn_514 (**weapon resolver**),
+7204e74c… → fn_2617 (aim/activate-weapon), 41478811… → fn_683, a95369ab…
+→ fn_1135 (secure settings codec), 8ca5dd7e… → fn_1682 (clamp utils),
+098a31a2… → fn_2882, 0985d0d9… → fn_2070 (logger), 6f852124… → fn_2266,
+9152bb47… → **fn_75 (autofarm ✓ known)**, de839d04… → fn_1647 (brawlers
+grid ✓), 8ee7e288… → fn_2814 (menu catalog), 1f624bd0… → fn_2488
+(counters), 4019cea5… → **fn_109 (ball ✓)**, d2eb449c… → **fn_888 (visual
+runtime)**, 11328133… → fn_321, 0172f08b… → fn_447 (menu pages), 3b249d16…
+→ fn_367, 345131e9… → fn_1614, 5c3c706d… → fn_936 (**HUD element factory**),
+09318bab… → fn_1190, 993a3bd2… → fn_1807 (HUD drag), cbaa6459… → **fn_1535
+(brawlers ✓)**, bfd53972… → **fn_1488 (brawlers page ✓)**, 44cc396f… →
+fn_2685, 47bf3b40… → fn_2349.
+
+### Feature id map (fn_488 constant slots, recovered)
+
+0-16 sequential group ids; 17-23 = the **visual group** (22 = DPS counter,
+23 = **camera**), 24 = **chromatic_name**, 25 = FPS counter, 26 = VSync
+bypass, 27 = ?, 29 = ?, 30 = ?, 31/32 = ?, 33 = gadget_timer, 34 =
+**charge_hud**, 35 = safe_timer, 36 = hide_super_aim, 37-41 = hash-keyed.
+Menu registry row = feature_id − 14 for the sequential block.
+
+### Key discoveries
+
+- **`_$814748ecc47856e7b144daa6` = `getState`** — universal API key, on
+  fn_888 (→ fn_476 camera getState), fn_313 (→ fn_847), and as a field on
+  the firstPerson substate. The earlier "post-move" attribution in old
+  summaries was a context-misread; corrected everywhere.
+- **`_$2bb396d3e47114ff0401ee8c` = `reset`** (fn_888 → fn_1017, fn_313 →
+  fn_2320, fn_936 context).
+- **`_$326b40333128b4d78bc7e739` = `start`** (autofarm menu START key,
+  fn_313 API, fn_2882/fn_2685 modules).
+- **`_$1458b5e5e1ba5d16cc261b4d` = `getBattle`** (confirmed on fn_888).
+- `get_loc_check N` in the disasm = TDZ-checked LOCAL read;
+  `put_loc_check_init N` is the write side (this is how the id constants
+  were traced: e.g. `num 34.0 → put_loc_check_init 120`).
+- The **options schema** (fn_488.loc_1729, 24 categories × element lists):
+  cat 0 = global page [version, language, functions, trickshot, aim, dodge,
+  killaura, spin, camera, serverRegion, autoFarm, `_$c79050d9e71550b5f208f021`,
+  motion, compact, fpsUnlock, emoteHud, emoteRepeat, emoteSpeed,
+  onboardingSeen, quickPosition, hudLayout, profiles, quickSlots];
+  cat 5 = camera [mode, fov, eyeHeight]; cat 8 = colors [mode, red, green,
+  blue, hue, cycleSeconds, saturation, brightness, opacity, glow]; enums:
+  targeting [nearest, lowest_hp], camera mode [chase, firstPerson], color
+  mode [rainbow, solid], one [off, ally, enemy].
+- fn_888 state model: loc_47/loc_73 = Map caches, loc_61 = 13-slot HUD
+  record (3 Maps + counters + records + revision), counters table =
+  [ammoFrames, shakeSuppressed, clonesHighlighted, utilitySamples,
+  utilityObjects, utilityNativeCalls, utilityQueued, offsetChecks,
+  nameReads, nameCacheHits, guardedSkips, errors], entity record =
+  [id, slot, gid, name, hp, maxHp, alive, ratio, seen].
+- fn_313 chromatic CModule: 24-slot one-shot pointer-match trampoline
+  (allocSlot/freeSlot/invocationHandler + onHit/slots), symbol pairs
+  recovered, marker = `Memory.allocUtf8String('player_name')`.
+- fn_936 HUD element factory: `catalog.hasOwnProperty(name)` guard →
+  `Unknown JirGear HUD element: <name>` → `fn_443(index, view)` dispatch.
+- fn_514 weapon resolver: natives `'selected weapon'` (ptr→ptr), `'primary
+  weapon'` (ptr,int), `'super weapon'` (ptr→ptr), `'gadget'` — the charge_hud
+  data source.
+
+### Hash → name map (this session)
+
+| Hash | Name | Where |
+|---|---|---|
+| `_$814748ecc47856e7b144daa6` | getState | universal API key |
+| `_$2bb396d3e47114ff0401ee8c` | reset | fn_888/fn_313 APIs |
+| `_$326b40333128b4d78bc7e739` | start | shared module key |
+| `_$821390e001168171cc742a63` | stop | fn_888 API (fn_1724) |
+| `_$c6ca8052007e2c68b9ae8264` | shutdown | fn_888 API (fn_308, provisional) |
+| `_$5d4c0fb7c10142a224a0f3fc` | scanBattle | fn_888 API (fn_1737) |
+| `_$139caf140d856c0b583a2eac` | elementsCacheSize | camera getState |
+| `_$9cb5def9e9346dc26e328372` | nameCacheSize | camera getState |
+| `_$48b7006b5c2f56969684dadf` | renderContext | camera getState |
+| `_$311553cf806abf8537b6573f` | cameraActive | camera getState |
+| `_$c4ded82d77ca3ddba3c08633` | optionViews | camera getState |
+| `_$9c67ec561dd50e93f6ee57a1` | hud.records | camera getState |
+| `_$fce936a06858eae4290c808b` | hud.counterA | camera getState |
+| `_$cfd9dbcededa8c5bf1d56126` | hud.counterB | camera getState |
+| `_$22b2391a5990cc24c75efe6b` | hud.active | camera getState |
+| `_$97f3931e41a39623e7fd15f6` | hud.elements | camera getState |
+| `_$5fc17814efe663d0dd66077a` | cmodule.onHit | fn_313 symbol pair 0 |
+| `_$b8f4fe747eaf3558c615957b` | cmodule.slots | fn_313 symbol pair 1 |
+| `_$5c2e4f85ca4126e7f0598c28` | cmodule.invocationHandler | fn_313 symbol pair 2 |
+| `_$3d5683430a7c30c5a39f5b48` | cmodule.allocSlot | fn_313 symbol pair 3 |
+| `_$f5513d6509d1f8a25d14e047` | cmodule.freeSlot | fn_313 symbol pair 4 |
+| `_$74d4d2393db4b98bf9b7cd88` | bridge.remove | fn_313 freeSlot wrapper |
+| `_$0d5f4e4add965ac24b1cd881` | attach (provisional) | fn_313 API |
+| `_$5d007976a58077c25cb4fb6c` | detach (provisional) | fn_313 API |
+| `_$1cb2f5b7c06c99e0fcf6f51a` | refresh (provisional) | fn_313 API |
+| `_$b5314d93d5b291f20e96e83c` | setEnabled (provisional) | fn_313 API |
+| `_$4d0e4821b7c80ce42dcb332c` | setOptions (provisional) | fn_313 API |
+| `_$6ce18b7efd95392f6cb4bc46` | (method boundary) | fn_313 API fn_346 |
+| `_$2d0f04e0c0e3fab33dea7a36` | (method boundary) | fn_313 API fn_2870 |
+| `_$cb11f4723193c9959442b071` | (stop-side helper key) | fn_1724/fn_1639 |
+| `_$59f4360b11d6837d31dadb56` | hudElementCatalog (module) | fn_488 export |
+| `_$c79050d9e71550b5f208f021` | (global page key 11) | options cat 0 |
+
+### Pending boundaries
+
+- fn_313's 43 closure children (palette selection + name rebuild +
+  write-back internals) — provisional API names marked above.
+- fn_888's remaining children beyond the decoded API (fn_2368/fn_365/fn_898
+  hook installers, fn_556 native enter/leave bridge, fn_660 NinjaFake
+  entity filter, fn_1517/fn_1962/fn_244 memory readers).
+- fn_443 HUD element constructor tree (menu/HUD widget instances).
+- The full fromCharCode feature-key registration fan beyond the trio +
+  hide_super_aim (offsets 32400+: more fromCharCode keys follow).

@@ -68,3 +68,50 @@ Super / Hypercharge state HUD. Key charge_hud (obfuscated). NOTE: the key/labels
    31126  define_array_el            
 ```
 
+---
+
+## Reconstruction (session 8) — charge_hud.js
+
+Fully decoded registration + module model; see `charge_hud.js`.
+
+### Feature identity
+
+- **Feature id: 34** (`fn_488` constant slot `loc_120`, set from `num 34.0` at
+  offset 29545 via `put_loc_check_init`).
+- **Key**: `charge_hud`, built at runtime by `String.fromCharCode(99, 104,
+  97, 114, 103, 101, 95, 104, 117, 100)` (offsets 30975–31086). The key is
+  never a plaintext constant — same for the whole registration trio:
+  - id 33 → `gadget_timer` (12 chars, offsets 30785–30878)
+  - id 34 → `charge_hud` (10 chars, offsets 30975–31086)
+  - id 35 → `safe_timer` (10 chars, offsets 31143–31254)
+- The trio feeds the feature-key registry (`fn_488.loc_629`) and the settings
+  schema path (`fn_488.loc_965[0][2]`) through a for-of over
+  `[[33, 'gadget_timer'], [34, 'charge_hud'], [35, 'safe_timer']]`
+  (offsets 30715–32118; the iterator-protocol noise is compiler output).
+
+### Defaults & menu
+
+- Defaults map (`fn_488.loc_869`, offsets 67354–67578): **`34 = true`** (the
+  whole trio is ON by default; contrast `hide_super_aim` = 36 = false).
+- Menu entry (registry row `'20'`, offsets 46891–47341):
+  `[34, "Super / Hyper state", "Ульта / гипер", 0, 34]` — both labels are
+  fromCharCode-built (EN: 19 chars, offsets 46941–47315; RU: 13 Cyrillic
+  codepoints, offsets 47171–47231) and the **settings key is the numeric
+  id 34**, not a string.
+
+### Data source & counters
+
+- Super/hyper state is read through the shared **weapon-state resolver**
+  (`fn_514`): natives labeled `'selected weapon'` (ptr→ptr), `'primary
+  weapon'` (ptr,int), `'super weapon'` (ptr→ptr) and the gadget slot.
+- Global counters table (`fn_2488`) includes `superAttempts` /
+  `superShots` — the HUD bumps these on availability rising edges and
+  observed super uses.
+
+### Module API (reconstructed)
+
+`createChargeHud(deps)` → `{ setEnabled, classifySuperState,
+formatSuperState, tick, getState, dispose }` with widget states
+EMPTY / CHARGING / SUPER_READY / HYPER_READY, an 80 ms throttled tick, and
+the byte-faithful `buildKey()` fromCharCode construction.
+

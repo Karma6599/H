@@ -98,3 +98,65 @@ Native-rendered animated/chromatic player name ("NATIVE BLING NAME"). Uses the C
 
 ```
 
+
+---
+
+## Reconstruction (session 8) — chromatic_name.js
+
+Fully decoded module factory; see `chromatic_name.js`.
+
+### Feature identity
+
+- **Feature id: 24** (`fn_488.loc_1615`); menu key `'CHROMATIC_NAME'`, menu
+  rows 62 (`NATIVE BLING NAME`) + 63 (`Live colors and animation speed`).
+- The module factory is **fn_313** (`fn_488.loc_1091`, registered as module
+  `_$e101f3a97d248c4dfa9c10c3`): 272 locals, 5159 bclen, 43 closure
+  children, `getState` exposed through the universal
+  `_$814748ecc47856e7b144daa6` key (fn_847).
+
+### Options model (fn_488 options category 8)
+
+Keys `[mode, red, green, blue, hue, cycleSeconds, saturation, brightness,
+opacity, glow]`, mode enum `[rainbow = 0, solid = 1]` (menu: СПЕКТР /
+ОДИН ЦВЕТ; КРАСНЫЙ / ЗЕЛЁНЫЙ / СИНИЙ / ЦИКЛ / СЕК / ПОДСВЕТКА /
+НЕПРОЗРАЧНОСТЬ).
+
+### The CModule trampoline (byte-recovered, cpool [437])
+
+`new CModule(source, {onHit: jsCallback, slots: backingBuffer}, symbolPairs)`
+compiles a 24-slot one-shot pointer-match table:
+
+- `allocSlot(a, b, c, id) -> int` — registers up to 3 pointers per slot
+  (wrapped as `add`, native signature `int(pointer, pointer, pointer, uint)`)
+- `freeSlot(id) -> void` — wrapped as `remove`, `void(uint)`
+- `invocationHandler(GumInvocationContext *)` — the Gum onEnter body: scans
+  the table for the current first argument pointer, consumes the slot and
+  fires `onHit(id, arg0)`
+- `onHit` / `slots` — the JS callback + backing buffer exported to C
+
+The JS side allocates the marker once:
+`Memory.allocUtf8String('player_name')` (offsets 4961–4986) and registers
+its pointer in the trampoline — the game's own name-render entry is
+hooked, and when the own player's name is passed the C handler fires and
+JavaScript rebuilds it with the live chromatic palette.
+
+### Factory API (raw key → name)
+
+| Raw runtime key | fn | Renamed |
+|---|---|---|
+| `_$326b40333128b4d78bc7e739` | fn_2647 | `start` (shared key: autofarm menu START, fn_2882, fn_2685) |
+| `_$0d5f4e4add965ac24b1cd881` | fn_1707 | `attach` (provisional) |
+| `_$5d007976a58077c25cb4fb6c` | fn_739 | `detach` (provisional) |
+| `_$1cb2f5b7c06c99e0fcf6f51a` | fn_2327 | `refresh` (provisional) |
+| `dispose` | fn_1531 | `dispose` |
+| `_$b5314d93d5b291f20e96e83c` | fn_794 | `setEnabled` (provisional) |
+| `_$2d0f04e0c0e3fab33dea7a36` | fn_2870 | method boundary |
+| `_$814748ecc47856e7b144daa6` | fn_847 | `getState` (universal key) |
+| `_$6ce18b7efd95392f6cb4bc46` | fn_346 | method boundary |
+| `tags` | fn_1525 | `tags` |
+| `_$4d0e4821b7c80ce42dcb332c` | fn_1209 | `setOptions` (provisional) |
+| `_$2bb396d3e47114ff0401ee8c` | fn_2320 | `reset` (shared key) |
+
+The 43 closure children (fn_1997 … fn_1643, shuffled locals) are the
+palette/name-rebuild internals — documented boundary pending the same
+deep-read methodology as the autofarm battle AI.
