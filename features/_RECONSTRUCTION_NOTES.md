@@ -58,9 +58,36 @@ header during reconstruction and are preserved in the git history of this repo
   deep-read (documented in ball_assist.md + the session-6 notes section):
   fn_1028 assist fire hook, fn_1906 refreshPlan, fn_623 scanBall, fn_2166
   buildGoalRecord, fn_554 aimAtGoal, fn_861 executeGoalMove, fn_260
-  createTracker. The planner/solver layer and mortis_chain internals
-  remain documented boundaries (see the PENDING list in the ball section
-  below).
+  createTracker — ALL now IN ball.js (session 7 wired them in: scanBall,
+  buildGoalRecord + provisional goal-anchor factory, executeGoalMove,
+  ballAssistFireOnEnter, aimAtGoal, createTracker, genCandidates fan,
+  solvePlan contract, followObjectivePath boundary, attachHook/detachHook,
+  dispatchMortis boundary, the fn_488 helper set and the byte-recovered
+  fn_109 index constants: ownProbe 19 / header 18 / entity 21 / root 28 /
+  ownPosition 20 / warm [7,8,9,10,6]). The planner/solver core (fn_2163
+  scoring), fn_2584 target solver, fn_696 mouth-box test and the
+  mortis_chain internals remain documented boundaries (see the PENDING
+  list in the ball section below).
+- `brawlers.js` — COMPLETE (session 7): the identity + settings layer —
+  fn_84 getBrawlerIdentity (findRangeByAddress + 'r' probe + native
+  +47701), fn_1535 identity module (manager/homeMode/avatar), fn_2288
+  settings store (state array [version, autoSwitch, global, byBrawler]),
+  fn_2512 serialize (codec groups 23/2), fn_752 entry mapper, fn_2227
+  validate (1024 cap, id regex, silent drops), fn_1488/fn_1942 menu page
+  + USE GLOBAL SETTINGS switch, fn_1647/fn_1767 grid (LOADING BRAWLERS
+  labels, 330/14/10 layout, Auto Farm UI helper dep), fn_887 ban-list
+  picker, HUD status labels, dodge slot 5 / autofarm 12-slot consumer
+  specs. See brawlers.md for the disassembly excerpts.
+- `autofarm.js` — hash purge completed (session 7, standing rule): all 63
+  raw `_$hash` occurrences renamed to the recovered semantic names
+  (fetchBrawlers/isInBattle/isFreshBattle/readGamePhase/startBattle/
+  canUseGadget/useGadget/useSuper/readOwnSlotIndex/canStartBattle/
+  selectBrawler/readBattleView/reset/mover trio canMove/ready/step/
+  gate checkPathBudget/notifyRejected/isLockedProbe/releaseAlt/watch/
+  detach/readPendingResult + the view-field names sessionMs/followAnchor/
+  gamePhase/retryOkCount/battleMs/phaseA/extra/counters/started/reason/
+  brawlers/engineProbe/selectedIndex/power/unlocked + ctx gate/options +
+  rate-tracker mode/capacity + install-spec onBattle/watch/interval/notify).
 
 ## Hash → name map (autospin)
 
@@ -771,6 +798,49 @@ numeric slots 1/2/3): this.threadId, this.record, this.outBuffer.
   (header alloc size — inferred 24), loc_106 (points buffer capacity —
   inferred 32 ≥ 17 max). Documented in ball.js constants.
 
+### Session 7 — ball.js completion + brawlers.js + autofarm hash purge
+
+User feedback driving this session: "tu changes juste les .md tu add pas
+les .js" — the session-6 deep-read had landed only in the docs. Fixed by
+wiring everything into the code files:
+
+- ball.js (1199 -> 1781 lines): the session-6 reconstructions moved IN
+  — fn_623 scanBall (memoized walk, actorCache cap 32, own-probe bool
+  native, header/entity natives, range*100 in (0,20000), radius clamp
+  1..500), fn_2166 buildGoalRecord (side readU8, per-side goal X, slot-20
+  own-position native, wall term, 8-part memo key, provisional
+  goal-anchor factory standing in for fn_488.loc_204), fn_861
+  executeGoalMove (70 ms throttle, path-budget flag 5/120, pathStep
+  callback else 72-byte command through the move controller queue),
+  fn_1028 ballAssistFireOnEnter (gate polarity fixed — proceeds only at
+  trickshotModeValue === 0; slot class 5; args[1]/[2] Math.round,
+  args[5]/[6] Math.round(0)), fn_554 aimAtGoal (budget clamp, target
+  solver boundary, aimTarget += (isOpen?1:-1)*(speed+25), direct-shot
+  gate), fn_260 createTracker (capacity 32..2048 def 1000, clock,
+  mode def 3), fn_2705 genCandidates fan (36 x 0.25/0.5/0.75), fn_2163
+  solvePlan contract (2..128 samples, |x|,|y| <= 100000, hypot math,
+  {clear, bounces, segments, length}), fn_1166 followObjectivePath
+  boundary, dispatchMortis boundary, attachHook/detachHook, and the
+  fn_488 helper set (featureId, validateWorld, checkBattleAlive,
+  validateSlot, normalizeMode, countEnabled, mapActorKey, currentFlags,
+  refreshGlobalFlags, projectSnapshot, resolveNativeAddress).
+- fn_109 factory index-constant table byte-recovered: loc_7=6, loc_14=8,
+  loc_28=10, loc_90=7, loc_102=17, loc_5=18, loc_52=19, loc_68=21,
+  loc_110=28, loc_133=9, loc_154=20 (ownProbe 19 / header 18 / entity
+  21 / root 28 / ownPosition 20; move warm [7, 8, 9, 10, 6]).
+- fn_1028 gate polarity re-verified on the disasm (session-6 wording
+  was inverted): the hook returns on `!features[11] || interlock ||
+  trickshotModeValue !== 0` — i.e. it runs with the trickshot selector
+  DISARMED. executeShot (fn_2230) conversely requires modeValue === 1.
+- brawlers.js created (449 lines): identity module + settings store +
+  menu pages + grid + ban-list picker + HUD labels + consumer specs.
+- autofarm.js: all 63 raw hashes purged to semantic names (table above
+  updated); node --check clean on all three files.
+- New deps surfaces documented in the code heads: ballOffsets/screen/
+  goalIndexes/ballReaders/goalTargetSolver/battleGoalOffset/
+  hudPointerOffset/hudScaleOffset (ball), encode/decode settings codec
+  groups 2/23 + autoFarmUiHelper (brawlers).
+
 ### Session 6 — ball assist deep-read + brawlers feature map
 
 Closure-rule refinement (CRITICAL for global references): the per-function
@@ -786,8 +856,11 @@ trust it past the last fn_488 capture; resolve via each function's header
 
 - fn_1028 = ballAssistFireOnEnter (hook 1 @ VALUES[0], child of fn_2043,
   rule N−3): gates `!features[11] || interlock(loc_120) ||
-  trickshotModeValue(loc_134) !== fn_488.loc_344 (=0.0)` — the assist fire
-  rewrite only runs with a trickshot mode armed; slot =
+  trickshotModeValue(loc_134) !== fn_488.loc_344 (=0.0)` → return — the
+  assist fire rewrite runs only with the trickshot selector DISARMED
+  (mode 0; mode 1 is the executeShot direct-trickshot path; polarity
+  re-verified on the fn_1028 disasm, session 7 — the earlier "armed"
+  reading was wrong); slot =
   inputGate.getActiveSlot() must satisfy fn_1384(slot) === 5;
   seedPointer = args[0]; motion = fn_332 scanObjective(Date.now());
   isUsablePointer(args[3]) && args[3].equals(motion.world.ownCharacter);
@@ -1003,4 +1076,25 @@ _AUTOFARM_ANALYSIS.md.
 | `_$82d621c353e8b511991868b6` | gate (ctx key) | ctx object |
 | `_$959ddfbde0867dbe30d9b573` / `_$18bf150356dd129b8567a861` | rate tracker config (2, 1000) | fn_1005 arg |
 | `_$9152bb47b295cda5e547b11e` | createAutoFarm (registry export) | fn_488 exports table |
-| `_$63be9aca05f57f6cf9d7e4df`, `_$05ec49aa245383348d1cac58`, `_$42dff362b2a786e5a82f1f83`, `_$6efc9ae1149d626e5ff2b31b`, `_$45345448a194f2a58b520758`, `_$57cc67270c44b1649561b056`, `_$a1e84b831583247974945566`, `_$03518639e9f4c4742ffc4f05`, `_$fc173d49c1cb34effb0d77f1`, `_$e60f0ad6faf3d9ba0a4ff5d1`, `_$cc0099f13af4944a3117abd1`, `_$192fb677c15ae506902345a0`, `_$e8720c0b26835c8f5ce08de0`, `_$02ba24c1a53c7d4d51555801`, `_$668024f76431ae04690f70bf`, `_$9d77b14fac7a1211990eb2e1`, `_$785d5ef00166ecb2b43c23ed`, `_$245628981788bf6021e19fac` | getState/view field keys (kept verbatim; UI panel contract) | fn_1692/fn_1077 |
+| `_$63be9aca05f57f6cf9d7e4df` | started (view) | fn_1692/fn_1077; renamed in autofarm.js session 7 |
+| `_$05ec49aa245383348d1cac58` | engineProbe (view) | fn_1692 |
+| `_$42dff362b2a786e5a82f1f83` | selectedIndex (view) | fn_1692 |
+| `_$6efc9ae1149d626e5ff2b31b` | reason label (view) | fn_1692 (REASONS[reasonCode]) |
+| `_$45345448a194f2a58b520758` | brawlers (view) | fn_1692 (fn_599 brawler views) |
+| `_$57cc67270c44b1649561b056` | view field (unresolved) | fn_1692 |
+| `_$a1e84b831583247974945566` | view field (unresolved) | fn_1692 |
+| `_$03518639e9f4c4742ffc4f05` | view field (unresolved) | fn_1692 |
+| `_$fc173d49c1cb34effb0d77f1` | sessionMs (getTimings) | fn_236 |
+| `_$e60f0ad6faf3d9ba0a4ff5d1` | followAnchor (getTimings) | fn_236 |
+| `_$cc0099f13af4944a3117abd1` | gamePhase (getTimings) | fn_236 |
+| `_$192fb677c15ae506902345a0` | retryOkCount (getTimings) | fn_236 |
+| `_$e8720c0b26835c8f5ce08de0` | battleMs (getTimings) | fn_236 |
+| `_$02ba24c1a53c7d4d51555801` | phaseA (plan view) | fn_1692 (PHASES[phaseA]) |
+| `_$668024f76431ae04690f70bf` | extra (plan view) | fn_1692 (farm extra) |
+| `_$9d77b14fac7a1211990eb2e1` | counters (plan view) | fn_1692 |
+| `_$785d5ef00166ecb2b43c23ed` | power (brawler entry field) | toBrawlerView |
+| `_$245628981788bf6021e19fac` | unlocked (brawler entry field) | toBrawlerView |
+| `_$077067910d6da412e59a307d` | probeStatus (provisional) | engine probe behind call_arg_1532_6 |
+| `_$b1c1fd9b08c939a58752485f` | install spec 'onBattle' (positional) | installBattleHook arg 1 |
+| `_$2c8df886ef4dd948d6d253ae` | install spec 'interval' (positional) | installBattleHook arg |
+| `_$9eeae86f99566aed4d53508f` | install spec 'notify' (positional) | installBattleHook trailing arg |

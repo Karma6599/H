@@ -19,6 +19,13 @@ factory `fn_488` (storage + catalog), the settings store `fn_2288`
 (children of fn_488). Name canon comes from the bundled module
 `utils/brawlerName.js` (module-import atom in fn_488).
 
+> Reconstructed in `brawlers.js`: identity module (fn_1535/fn_84),
+> settings store (fn_2288 with fn_2512/fn_752/fn_2227), menu page +
+> override switch + empty state (fn_1488/fn_1942/fn_1492), grid factory
+> + renderer (fn_1647/fn_1767), ban-list picker (fn_887), HUD status
+> labels and the consumer option slots. The fn_381 settings codec
+> (groups 2/23) arrives through deps as a documented boundary.
+
 ## Notes
 
 ### 1. Brawler identity module — `fn_1535` [#1666, child of fn_488]

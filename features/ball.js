@@ -63,6 +63,69 @@ const BALL_SAMPLE_Z = 8;
 const BALL_CTX_FLAG = 8;
 const BALL_RADIUS = 60;
 
+// Ball scan (fn_623) gates and memoization.
+const BALL_ACTOR_CACHE_MAX = 32;
+const BALL_RANGE_SCALE = 100;
+const BALL_RANGE_MIN = 0;
+const BALL_RANGE_MAX = 20000;
+const BALL_RADIUS_CLAMP_MIN = 1;
+const BALL_RADIUS_CLAMP_MAX = 500;
+
+// Goal move (fn_861) throttle and manual-path constants.
+const BALL_MOVE_THROTTLE_MS = 70;
+const BALL_PATH_BUDGET_FLAG = 5;
+const BALL_PATH_BUDGET = 120;
+const BALL_MOVE_COMMAND_SIZE = 72;
+const BALL_MOVE_WARM_INDEXES = [7, 8, 9, 10, 6];
+
+// fn_2163 sample contract: 2..128 points per plan.
+const BALL_PLAN_MAX_SAMPLES = 128;
+
+// Candidate fan (fn_2705): 36 directions x amplitude tiers.
+const BALL_FAN_DIRECTIONS = 36;
+const BALL_FAN_TIERS = [0.25, 0.5, 0.75];
+
+// fn_109 factory index constants (byte-recovered from the constant
+// table: loc_7=6, loc_14=8, loc_28=10, loc_90=7, loc_102=17, loc_5=18,
+// loc_52=19, loc_68=21, loc_110=28, loc_133=9, loc_154=20) — the VALUES
+// slots used by the scan/plan helpers.
+const BALL_SCAN_OWN_PROBE = 19;
+const BALL_SCAN_HEADER = 18;
+const BALL_SCAN_ENTITY = 21;
+const BALL_ROOT_NATIVE = 28;
+const BALL_OWN_POSITION_NATIVE = 20;
+
+const BALL_FEATURE_ID_BY_KEY = {
+  goal: BALL_GOAL,
+  ball_assist: BALL_ASSIST,
+  ball_trajectory: BALL_TRAJECTORY,
+  mortis_chain: BALL_MORTIS_CHAIN,
+};
+
+function featureId(rawKey) {
+  if (Number.isInteger(rawKey)) {
+    return BALL_FEATURE_IDS.includes(rawKey) ? rawKey : -1;
+  }
+  const id = BALL_FEATURE_ID_BY_KEY[rawKey];
+  return id === undefined ? -1 : id;
+}
+
+function validateWorld(world, ball, paused) {
+  // fn_488 shared world gate (fn_2046/fn_1919 flags): the ready flag
+  // must not be false, the alive flag must be truthy, and a present
+  // ball record must carry finite coordinates. A paused world requires
+  // a ball to aim at.
+  if (!world) return false;
+  if (world.ready === false) return false;
+  if (!world.alive) return false;
+  if (ball &&
+      (!Number.isFinite(ball.x) || !Number.isFinite(ball.y))) {
+    return false;
+  }
+  if (paused && !ball) return false;
+  return true;
+}
+
 function ballClamp(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
@@ -197,7 +260,148 @@ function ballProjectTrajectory(points, range, walls) {
   return trajectory.segments;
 }
 
+function genCandidates(own, record, snapshot) {
+  // fn_2705 — candidate fan: 36 directions x amplitude tiers
+  // 0.25/0.5/0.75 around the direct goal bearing (atan2/cos math). The
+  // per-candidate scorer fn_2479 is a documented boundary, so the fan
+  // below only fixes the shape; see ball_assist.md step 7.
+  const fan = [];
+  if (!own || !record) return fan;
+  const bearing = Math.atan2(record.y - own.y, record.x - own.x);
+  for (let i = 0; i < BALL_FAN_DIRECTIONS; i++) {
+    const spread = (i * 2 * Math.PI) / BALL_FAN_DIRECTIONS;
+    for (const tier of BALL_FAN_TIERS) {
+      fan.push(bearing + spread * tier);
+    }
+  }
+  return fan;
+}
+
+function solvePlan(samples, record, ball, entities, flag) {
+  // fn_2163 — plan solver (4552 bclen, the largest documented boundary).
+  // Byte-verified input contract: samples must be an array of 2..128
+  // {x, y} points with |x|, |y| <= 100000; the output plan carries
+  // {clear, bounces, segments, length} from hypot segment math plus the
+  // goal mouth test. The entity-intersection scoring core is pending
+  // (see ball_assist.md "Remaining boundaries").
+  if (!Array.isArray(samples) ||
+      samples.length < 2 ||
+      samples.length > BALL_PLAN_MAX_SAMPLES) {
+    return null;
+  }
+  for (const point of samples) {
+    if (!point ||
+        !Number.isFinite(point.x) ||
+        !Number.isFinite(point.y)) {
+      return null;
+    }
+    if (Math.abs(point.x) > BALL_TRAJECTORY_MAX_COORD ||
+        Math.abs(point.y) > BALL_TRAJECTORY_MAX_COORD) {
+      return null;
+    }
+  }
+  const plan = { clear: false, bounces: 0, segments: 0, length: 0, goal: null };
+  let previousDx = 0;
+  let previousDy = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1];
+    const b = samples[i];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    plan.segments++;
+    plan.length += Math.hypot(dx, dy);
+    const hit = ballTestSegment(record || null, a.x, a.y, b.x, b.y, plan.length);
+    if (hit) {
+      plan.goal = hit;
+      plan.clear = true;
+      break;
+    }
+    // A wall bounce shows up in the native samples as a direction
+    // reversal between consecutive segments.
+    if (i > 1 && dx * previousDx + dy * previousDy < 0) {
+      plan.bounces++;
+    }
+    previousDx = dx;
+    previousDy = dy;
+  }
+  return plan;
+}
+
+function createTracker(options) {
+  // fn_260 — trickshot tracker factory. Byte-verified: capacity clamp
+  // 32..2048 (default 1000), injectable clock, mode default 3; the API
+  // is {path, reset, getState}. The internal grid walker (fn_2860)
+  // stays a documented boundary — the provisional path below steps
+  // straight toward the objective within the path budget.
+  const config = options || {};
+  const capacity = Math.max(32, Math.min(2048, config.capacity || 1000));
+  const clock = config.clock || Date.now;
+  const mode = config.mode === undefined ? 3 : config.mode;
+  let samples = 0;
+  let resets = 0;
+  let lastPath = null;
+
+  function resolvePath(from, to, wallScan, navGrid, battle) {
+    if (!from || !to || mode === 0) return null;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 1) {
+      lastPath = { x: to.x, y: to.y, distance: 0, at: clock() };
+      return lastPath;
+    }
+    if (samples >= capacity) return null;
+    samples++;
+    const step = Math.min(distance, BALL_PATH_BUDGET);
+    lastPath = {
+      x: from.x + (dx / distance) * step,
+      y: from.y + (dy / distance) * step,
+      distance: distance,
+      at: clock(),
+    };
+    return lastPath;
+  }
+
+  function reset() {
+    samples = 0;
+    resets++;
+    lastPath = null;
+  }
+
+  function getState() {
+    return {
+      mode: mode,
+      capacity: capacity,
+      samples: samples,
+      resets: resets,
+      lastPath: lastPath,
+    };
+  }
+
+  return {
+    path: resolvePath,
+    reset: reset,
+    getState: getState,
+  };
+}
+
 function createBallRuntime(deps) {
+  // Runtime offset tables and shared readers arrive through deps so the
+  // module stays free of raw runtime offsets: ballOffsets is the 28-key
+  // VALUES table (aimX@22 / aimY@23 / fire@12 / state@24 / sim@14 /
+  // free@10), screen its 29th HUD entry; goalIndexes collects the
+  // fn_488 goal-layout slots (goal list, side flag, per-side goal X,
+  // travel type, move queue); ballReaders wraps the motion snapshot's
+  // shared function table (raw keys documented in ball_assist.md);
+  // goalTargetSolver is the fn_2584-family aim solver.
+  const ballOffsets = deps.ballOffsets;
+  const screen = deps.screen;
+  const goalIndexes = deps.goalIndexes || {};
+  const ballReaders = deps.ballReaders || {};
+  const battleGoalOffset = deps.battleGoalOffset;
+  const hudPointerOffset = deps.hudPointerOffset;
+  const hudScaleOffset = deps.hudScaleOffset;
+  const goalTargetSolver = deps.goalTargetSolver;
   const basePointer = ptr(deps.base);
   const inputGate = deps.inputGate;
   const baseAccessor = deps.log || dispatchMortis;
@@ -336,6 +540,336 @@ function createBallRuntime(deps) {
     } catch (err) {
       return false;
     }
+  }
+
+  function resolveNativeAddress(base, offset, label) {
+    // fn_488 shared precheck: probe the resolved target before the
+    // NativeFunction cache claims it (label = the offset-table key).
+    const target = base.add(offset);
+    if (!isUsablePointer(target)) {
+      throw new Error('Ball/Mortis native unavailable: ' + label);
+    }
+    return target;
+  }
+
+  function checkBattleAlive(target) {
+    // fn_761 — battle-alive probe (isShotReady gate).
+    return isUsablePointer(target);
+  }
+
+  function validateSlot(slot) {
+    // fn_1384 — raw input-slot validation: maps a slot to its capability
+    // class; the ball/assist fire path requires class 5.
+    if (!slot) return 0;
+    if (typeof slot === 'object' && slot !== null) {
+      return slot.id | 0;
+    }
+    return slot | 0;
+  }
+
+  function normalizeMode(mode) {
+    // fn_488 helper: clamp a trickshot mode selector into the
+    // TRICKSHOT_MODE_TABLE range (mode 1 arms the executeShot path).
+    const value = Number(mode) | 0;
+    if (value < 0) return 0;
+    if (value > TRICKSHOT_MODE_TABLE.length - 1) {
+      return TRICKSHOT_MODE_TABLE.length - 1;
+    }
+    return value;
+  }
+
+  function countEnabled(flags) {
+    let count = 0;
+    for (const id of BALL_FEATURE_IDS) {
+      if (flags[id]) count++;
+    }
+    return count;
+  }
+
+  function mapActorKey(key) {
+    return String(key);
+  }
+
+  function currentFlags() {
+    // fn_1393 mode 53669 — the live gate flags snapshot.
+    return {
+      override: override,
+      angle: !!(inputGate.angle && inputGate.angle()),
+      locked: !!(inputGate.isLocked &&
+        inputGate.isLocked(BALL_INPUT_FLAGS[BALL_PATH_BUDGET_FLAG])),
+      wantsShot: !!(deps.wantsShot && deps.wantsShot()),
+    };
+  }
+
+  function refreshGlobalFlags() {
+    // fn_488 global flag refresh (shared gate bookkeeping).
+    return currentFlags();
+  }
+
+  function projectSnapshot(motion) {
+    // fn_500 — goal data reader (documented boundary: the two anchor
+    // fields are unresolved; raw keys in the decode dictionary). Passes
+    // the snapshot's goal data through when present.
+    if (!motion || !motion.world) return null;
+    return motion.world.goalData || null;
+  }
+
+  function scanBall(motion, battle) {
+    // fn_623 — memoized ball scan (byte-verified; ball_assist.md step 3):
+    // gates battle.data + (paused === true || usable own character),
+    // re-reads the own flag through the bool probe native (slot 19),
+    // memoizes per `String(battle.data) + ':' + Number(own)` in the
+    // capped actor cache, then walks the ball list (header native 18,
+    // entity native 21) and reads range/radius/speed/travelType.
+    try {
+      const battleData = battle ? battle.data : null;
+      if (!isUsablePointer(battleData)) return null;
+      const world = motion.world;
+      const ownCharacter = world.ownCharacter;
+      if (!(world.paused === true || isUsablePointer(ownCharacter))) {
+        return null;
+      }
+      const own = getNative(BALL_SCAN_OWN_PROBE, 'bool',
+        ['pointer'])(ownCharacter);
+      const memoKey = String(battleData) + ':' + Number(own);
+      if (actorCache.has(memoKey)) return actorCache.get(memoKey);
+      const ballList = battleData.add(deps.ballListOffset).readPointer();
+      if (ballList.isNull()) return null;
+      if (!own) return null;
+      const header = getNative(BALL_SCAN_HEADER, 'pointer',
+        ['pointer'])(ballList);
+      const ballEntity = getNative(BALL_SCAN_ENTITY, 'pointer',
+        ['pointer', 'int'])(header, 0);
+      if (!isUsablePointer(ballEntity)) return null;
+      const range = ballReaders.range(header) * BALL_RANGE_SCALE;
+      if (!(range > BALL_RANGE_MIN && range < BALL_RANGE_MAX)) return null;
+      const ballPtr = ballReaders.ballPointer(header, 0);
+      let radius;
+      let speed;
+      let travelType;
+      if (isUsablePointer(ballPtr)) {
+        radius = ballReaders.radius(ballPtr) || battle.radius || BALL_RADIUS;
+        speed = ballReaders.speed(ballPtr) || 0;
+        travelType = ballPtr.add(goalIndexes.travelType).readS32();
+      } else {
+        radius = battle.radius || BALL_RADIUS;
+        speed = 0;
+        travelType = -1;
+      }
+      const scan = [
+        range,
+        ballClamp(radius, BALL_RADIUS_CLAMP_MIN, BALL_RADIUS_CLAMP_MAX),
+        header,
+        !!own,
+        speed,
+        travelType,
+      ];
+      if (actorCache.size < BALL_ACTOR_CACHE_MAX) {
+        actorCache.set(memoKey, scan);
+      }
+      return scan;
+    } catch (err) {
+      reportError(err);
+      return null;
+    }
+  }
+
+  function buildGoalAnchor(goalData, ownPosition, layout) {
+    // fn_488 goal-record factory (loc_204) — documented boundary: the
+    // full mouth-box geometry belongs to the goal/solvePlan session. The
+    // provisional anchor below carries the byte-verified mouth fields
+    // consumed by executeShot and aimAtGoal (mouthLeft = x threshold,
+    // mouthLow/mouthHigh = y bounds, isOpen, aimTarget).
+    return {
+      key: null,
+      goalSide: layout.goalSide,
+      x: layout.goalX,
+      y: ownPosition,
+      radius: layout.radius,
+      wall: layout.wall,
+      mouthLeft: layout.goalX,
+      mouthLow: ownPosition - layout.radius,
+      mouthHigh: ownPosition + layout.radius,
+      isOpen: true,
+      aimTarget: layout.goalX,
+    };
+  }
+
+  function buildGoalRecord(motion, radius) {
+    // fn_2166 — memoized goal anchor (byte-verified; ball_assist.md
+    // step 4): goal data via fn_500, goal list off the battle pointer,
+    // side flag readU8, per-side goal X readS32, own position through
+    // the slot-20 int native, wall term from the wall scan, then the
+    // 8-part memo key rebuilds the anchor through the factory above.
+    try {
+      const goalData = projectSnapshot(motion);
+      if (!goalData) return null;
+      const goalList = motion.battle.add(goalIndexes.goalList).readPointer();
+      if (goalList.isNull()) return null;
+      const side = goalList.add(goalIndexes.sideFlag).readU8() !== 0;
+      const goalX = goalList.add(
+        side ? goalIndexes.goalXSide : goalIndexes.goalXBase).readS32();
+      const ownPosition = getNative(BALL_OWN_POSITION_NATIVE, 'int',
+        ['pointer', 'pointer'])(
+          motion.world.ownCharacter,
+          motion.battle) | motion.world.ownPositionFallback | 0;
+      const wallScan = motion.wallScan;
+      const wall = wallScan && typeof wallScan.read === 'function'
+        ? wallScan.read()
+        : 0;
+      const memoKey = [
+        String(motion.battle),
+        goalData.anchorA,
+        goalData.anchorB,
+        ownPosition,
+        side,
+        goalX,
+        radius,
+        wall,
+      ].join(':');
+      if (goalAnchor && goalAnchor.key === memoKey) return goalAnchor;
+      goalAnchor = buildGoalAnchor(goalData, ownPosition, {
+        goalSide: side,
+        goalX: goalX,
+        radius: radius,
+        wall: wall,
+      });
+      goalAnchor.key = memoKey;
+      return goalAnchor;
+    } catch (err) {
+      reportError(err);
+      return null;
+    }
+  }
+
+  function executeGoalMove(motion, path, now) {
+    // fn_861 — goal move executor (byte-verified; ball_assist.md
+    // step 11): 70 ms throttle, path-budget gate (flag 5, 120), then
+    // the motion's pathStep callback when it provides one, else a
+    // manual 72-byte movement command through the move controller
+    // queue (warmed natives [7, 8, 9, 10, 6]).
+    if (now - lastMoveAt < BALL_MOVE_THROTTLE_MS) return false;
+    if (!inputGate.checkPathBudget ||
+        !inputGate.checkPathBudget(
+          BALL_INPUT_FLAGS[BALL_PATH_BUDGET_FLAG], BALL_PATH_BUDGET)) {
+      return false;
+    }
+    let moved = false;
+    const pathStep = motion.pathStep;
+    if (typeof pathStep === 'function') {
+      moved = !!pathStep(motion.battle, path.x, path.y);
+    } else {
+      const controller = ballReaders.moveController;
+      if (controller) {
+        const queue = controller.add(goalIndexes.moveQueue).readPointer();
+        if (!queue.isNull()) {
+          warmNatives(BALL_MOVE_WARM_INDEXES);
+          const command = Memory.alloc(BALL_MOVE_COMMAND_SIZE);
+          command.writeByteArray(
+            new Uint8Array(BALL_MOVE_COMMAND_SIZE));
+          getNative(deps.ballMoveSubmitIndex, 'ulong',
+            ['pointer', 'pointer'])(queue, command);
+          moved = true;
+        }
+      }
+    }
+    if (!moved) return false;
+    lastMoveAt = now;
+    counters[3]++;
+    return true;
+  }
+
+  function ballAssistFireOnEnter(args) {
+    // fn_1028 — assist fire hook (refreshHooks hook 1 @ VALUES[0],
+    // onEnter; byte-verified; ball_assist.md step 9): proceeds only
+    // with the assist enabled, no interlock and trickshot mode 0; the
+    // active slot must validate to class 5; the firing character must
+    // be the own character; the aim args are rewritten from the
+    // refreshed plan with Math.round and the trailing args zeroed.
+    try {
+      if (!features[BALL_ASSIST] || interlock || trickshotModeValue !== 0) {
+        return;
+      }
+      const slot = inputGate.getActiveSlot();
+      if (slot && validateSlot(slot) !== 5) return;
+      const seed = args[0];
+      const now = Date.now();
+      const motion = scanObjective(now);
+      if (!motion || !motion.world) return;
+      const firingCharacter = args[3];
+      if (!isUsablePointer(firingCharacter) ||
+          !firingCharacter.equals(motion.world.ownCharacter)) {
+        return;
+      }
+      const shot = refreshPlan(motion, seed, now);
+      if (!shot) return;
+      args[1] = Math.round(shot.x);
+      args[2] = Math.round(shot.y);
+      args[5] = Math.round(0);
+      args[6] = Math.round(0);
+      lastWriteAt = now;
+      counters[4]++;
+      resetBallState();
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  // Hook handlers (refreshHooks attach points). The assist fire hook
+  // (fn_1028) is reconstructed above; the goal (fn_2714/fn_508) and
+  // mortis (fn_729/fn_569) handlers stay documented boundaries with
+  // their verified entry gates preserved.
+  const ballHookHandlers = {
+    assist: {
+      onEnter: ballAssistFireOnEnter,
+    },
+    goal: {
+      onEnter: function goalOnEnter(args) {
+        return undefined;
+      },
+      onLeave: function goalOnLeave(retval) {
+        return retval;
+      },
+    },
+    mortisA: {
+      onEnter: function mortisAOnEnter(args) {
+        return undefined;
+      },
+    },
+    mortisB: {
+      onEnter: function mortisBOnEnter(args) {
+        return undefined;
+      },
+    },
+  };
+
+  function attachHook(slot, index, handlers) {
+    // fn_2043 helper: attach an Interceptor at the VALUES offset and
+    // keep the handle in the per-feature hook map.
+    const hook = Interceptor.attach(basePointer.add(values[index]), handlers);
+    hooks.set(slot, hook);
+    return hook;
+  }
+
+  function detachHook(slot) {
+    const hook = hooks.get(slot);
+    if (!hook) return false;
+    hooks.delete(slot);
+    try {
+      hook.detach();
+    } catch (err) {
+      reportError(err);
+    }
+    return true;
+  }
+
+  function dispatchMortis(now, scan) {
+    // Mortis chain subtree (fn_1876 family) — documented boundary (see
+    // the PENDING list in _RECONSTRUCTION_NOTES.md). Verified entry
+    // contract: the dispatch only runs with the feature enabled and a
+    // scan snapshot in hand; the rewrite internals are pending.
+    if (!features[BALL_MORTIS_CHAIN] || !scan) return undefined;
+    return undefined;
   }
 
   function ballDispatch(mode, arg) {
@@ -1143,20 +1677,69 @@ function createBallRuntime(deps) {
     };
   }
 
-  function aimAtGoal(seedPtr, target, budget) {
-    return aimAtGoalSolver(seedPtr, target, budget, {
-      scanObjective: scanObjective,
-      goalRecord: goalRecord,
-      paused: paused,
-      ballScan: ballScan,
-    });
+  function aimAtGoal(anchor, options) {
+    // fn_554 — aim at the goal (byte-verified; ball_assist.md step 10):
+    // budget clamp, fn_2584-family target solver (documented boundary —
+    // the goal anchor itself is the aim point without it), buildShot at
+    // the solved bearing, aim-target adjustment (isOpen ? 1 : -1) *
+    // (speed + 25), then the direct-shot gate plan.clear && bounces === 0.
+    const now = Date.now();
+    const motion = scanObjective(now);
+    if (!motion || !motion.world) return null;
+    const world = motion.world;
+    if (!goalRecord || !ballScan) return null;
+    if (ballScan[BALL_RECORD_TRAVEL] !== BALL_TRAVEL_IN_FLIGHT) {
+      return null;
+    }
+    const range = ballScan[BALL_RECORD_RANGE];
+    const budget = Math.min(
+      options && options.range !== undefined ? options.range : range,
+      range);
+    const root = getNative(BALL_ROOT_NATIVE, 'pointer', [])();
+    const origin = anchor || { x: world.ownX, y: world.ownY };
+    const entities = [];
+    for (const entity of world.entities || []) {
+      entities[entities.length] = entity;
+    }
+    for (const projectile of world.projectiles || []) {
+      entities[entities.length] = projectile;
+    }
+    const target = goalTargetSolver
+      ? goalTargetSolver(origin, goalRecord, motion.wallScan, budget,
+          readBallRecord(ballScan), entities)
+      : goalRecord;
+    if (!target) return null;
+    const angle = Math.atan2(target.y - origin.y, target.x - origin.x);
+    const shot = buildShot(motion, root, angle);
+    if (!shot) return null;
+    const record = { ...goalRecord };
+    record.aimTarget = record.aimTarget +
+      (record.isOpen ? 1 : -1) * (ballScan[BALL_RECORD_SPEED] + 25);
+    const plan = solvePlan(shot.samples, record,
+      readBallRecord(ballScan), entities, 0);
+    if (!plan || !plan.clear || plan.bounces !== 0) return null;
+    return {
+      ...target,
+      x: shot.x,
+      y: shot.y,
+      traveled: plan.length,
+      ready: true,
+    };
   }
 
   function followObjectivePath(target, angle, budget) {
-    return followObjectivePathSolver(target, angle, budget, {
-      scanObjective: scanObjective,
-      tracker: tracker,
-    });
+    // fn_1166 — follow the objective path (documented boundary, 281
+    // bclen: the full navigation walk). Verified contract: resolve the
+    // next path step through the tracker from the own position.
+    const now = Date.now();
+    const motion = scanObjective(now);
+    if (!motion || !motion.world || !target) return null;
+    return tracker.path(
+      { x: motion.world.ownX, y: motion.world.ownY },
+      target,
+      motion.wallScan,
+      motion.world.navGrid,
+      String(motion.battle));
   }
 
   function refreshFlags() {

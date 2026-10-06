@@ -99,14 +99,17 @@ Counters (fn_109 `counters[9]`, COUNTER_KEYS): `[0]` ticks, `[1]` scans,
    screen); validate (ptr + scale > 0); aim read → `Math.round` write →
    fire → restore → bookkeeping (lastWriteAt, `counters[4]++`).
 9. `fn_1028` **assist fire hook** (refreshHooks hook 1 @ `VALUES[0]`
-   `_$86578cf3ee4dbb337c25e5d4`, onEnter) — gates: `features[11] ||
-   interlock || trickshotModeValue !== 0` → return; `slot =
+   `_$86578cf3ee4dbb337c25e5d4`, onEnter) — gates: `!features[11] ||
+   interlock || trickshotModeValue !== 0` → return (the rewrite runs only
+   with the trickshot selector at mode 0 — polarity re-verified on the
+   fn_1028 disasm, session 7; mode 1 is the executeShot direct path);
+   `slot =
    inputGate.getActiveSlot()` must satisfy `fn_1384(slot) === 5`;
    `seedPointer = args[0]`; `motion = scanObjective(Date.now())`;
    `isUsablePointer(args[3]) && args[3].equals(motion.world.ownCharacter)`
    else return; `shot = refreshPlan(motion, seedPointer, now)`; writes
    `args[1] = Math.round(shot.x)`, `args[2] = Math.round(shot.y)`,
-   `args[5] = args[6] = 0`; `lastWriteAt = now`; `counters[4]++`;
+   `args[5] = args[6] = Math.round(0)`; `lastWriteAt = now`; `counters[4]++`;
    `resetBallState()`; catch → reportError. (Also fed by the trajectory
    system hook: fn_1795 stashes seedPointer unconditionally and sets
    `notBefore = now + 500` when assist is on.)

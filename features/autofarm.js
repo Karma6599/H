@@ -194,16 +194,16 @@ function createAutoFarm(deps) {
     var name = entry.name;
     var trophies = entry.trophies;
     var level = entry.level;
-    var powerField = entry['_$785d5ef00166ecb2b43c23ed'];
-    var unlockField = entry['_$245628981788bf6021e19fac'];
+    var powerField = entry['power'];
+    var unlockField = entry['unlocked'];
     var released = entry.released;
     return {
       id: id,
       name: name,
       trophies: trophies,
       level: level,
-      _$785d5ef00166ecb2b43c23ed: powerField,
-      _$245628981788bf6021e19fac: unlockField,
+      power: powerField,
+      unlocked: unlockField,
       released: released,
       selected: options[IDX_OPTIONS_SELECTED].includes(id),
     };
@@ -213,7 +213,7 @@ function createAutoFarm(deps) {
     var now = Date.now();
     if (!force && now - lastRefreshAt < REFRESH_BRAWLERS_MS) return brawlers;
     lastRefreshAt = now;
-    var raw = engine['_$98706144ef6b6cdb9e9923df'](force);
+    var raw = engine['fetchBrawlers'](force);
     if (raw.length) {
       var snapshot = JSON.stringify(getBrawlerViews());
       brawlers = raw;
@@ -322,8 +322,8 @@ function createAutoFarm(deps) {
   function tryMove(battle, x, y, useMax) {
     try {
       var mover = battle[5505];
-      if (mover && mover['_$9bd9ec1d23e38e503beb4bd7']() && mover['_$f7c30d51cf08aedbf4c036af']()) {
-        return mover['_$735ecb99890a46f30c70f919'](
+      if (mover && mover['canMove']() && mover['ready']()) {
+        return mover['step'](
           x,
           y,
           Math.max(1, battle[REC_SLOT_INFO][2723] || 60),
@@ -338,32 +338,32 @@ function createAutoFarm(deps) {
 
   function installBattleHook() {
     if (deps[6029] && typeof deps[6029]['call_arg_1571_5'] === 'function') {
-      deps[6029]['_$514b2e44ae09fa0ecd67bd1d'](false);
+      deps[6029]['detach'](false);
     }
     hook = engine['install'](
-      '_$b1c1fd9b08c939a58752485f',
+      'onBattle',
       tick,
-      '_$9ddd79a3d86c3ad16c7dd44b',
-      deps['call_arg_118_14']['_$9ddd79a3d86c3ad16c7dd44b'],
-      '_$2c8df886ef4dd948d6d253ae',
+      'watch',
+      deps['call_arg_118_14']['watch'],
+      'interval',
       options[IDX_OPTIONS_INTERVAL],
-      '_$9eeae86f99566aed4d53508f'
+      'notify'
     );
     return undefined;
   }
 
   function skipResults(battle, now) {
     if (!skipInFlight) return true;
-    if (gate['call_arg_754_34'] || gate['_$65b3440634fedfa37cf93dc8']()) return false;
-    if (gate['call_arg_118_21'] && !gate['_$2b1d9859a05368f4f18995bd'](3, 180)) return false;
+    if (gate['call_arg_754_34'] || gate['isLockedProbe']()) return false;
+    if (gate['call_arg_118_21'] && !gate['checkPathBudget'](3, 180)) return false;
     var slotInfo = battle[REC_SLOT_INFO];
     if (!engine['move'](battle, slotInfo[REC_OWN_X], slotInfo[REC_OWN_Y])) {
-      if (gate['fn_2461']) gate['_$22320225cdd7c427d4b8d3cb'](3);
+      if (gate['fn_2461']) gate['notifyRejected'](3);
       return false;
     }
     skipInFlight = null;
     skipRequestedAt = now;
-    if (gate['fn_2461']) gate['_$22320225cdd7c427d4b8d3cb'](3);
+    if (gate['fn_2461']) gate['notifyRejected'](3);
     return true;
   }
 
@@ -513,11 +513,11 @@ function createAutoFarm(deps) {
 
   function getTimings() {
     return {
-      _$fc173d49c1cb34effb0d77f1: firstSeenAt ? Math.max(0, Date.now() - firstSeenAt) : 0,
-      _$e60f0ad6faf3d9ba0a4ff5d1: followAnchor,
-      _$cc0099f13af4944a3117abd1: gamePhase,
-      _$192fb677c15ae506902345a0: retryOkCount,
-      _$e8720c0b26835c8f5ce08de0: battle && battle[REC_SLOT_INFO] ? Math.max(0, Date.now() - battle[REC_SLOT_INFO][REC_OWN_Y]) : null,
+      sessionMs: firstSeenAt ? Math.max(0, Date.now() - firstSeenAt) : 0,
+      followAnchor: followAnchor,
+      gamePhase: gamePhase,
+      retryOkCount: retryOkCount,
+      battleMs: battle && battle[REC_SLOT_INFO] ? Math.max(0, Date.now() - battle[REC_SLOT_INFO][REC_OWN_Y]) : null,
     };
   }
 
@@ -543,20 +543,20 @@ function createAutoFarm(deps) {
       status = 'running';
     }
     var plan = {
-      _$02ba24c1a53c7d4d51555801: PHASES[farm[IDX_FARM_PHASE_A]],
+      phaseA: PHASES[farm[IDX_FARM_PHASE_A]],
       phase: PHASES[farm[IDX_FARM_PHASE_B]],
       target: farm[IDX_FARM_TARGET],
       reason: farm[IDX_FARM_REASON] + 1,
-      _$668024f76431ae04690f70bf: farm[IDX_FARM_EXTRA],
-      _$9d77b14fac7a1211990eb2e1: Object.fromEntries(COUNTER_KEYS.map(mapCounterEntry)),
+      extra: farm[IDX_FARM_EXTRA],
+      counters: Object.fromEntries(COUNTER_KEYS.map(mapCounterEntry)),
     };
     return {
-      _$63be9aca05f57f6cf9d7e4df: started,
+      started: started,
       enabled: enabled,
       disposed: disposed,
       revision: revision,
       status: status,
-      _$6efc9ae1149d626e5ff2b31b: REASONS[reasonCode],
+      reason: REASONS[reasonCode],
       lastError: lastError,
       options: {
         ...serializeOptions(options),
@@ -566,9 +566,9 @@ function createAutoFarm(deps) {
         follow: followLabel(options[IDX_OPTIONS_FOLLOW]),
         autoSwitch: options[IDX_OPTIONS_AUTO_SWITCH],
       },
-      _$45345448a194f2a58b520758: getBrawlerViews(),
-      _$05ec49aa245383348d1cac58: typeof engine['call_arg_1532_6'] === 'function' ? engine['_$077067910d6da412e59a307d']() : undefined,
-      _$42dff362b2a786e5a82f1f83: selectedIdx,
+      brawlers: getBrawlerViews(),
+      engineProbe: typeof engine['call_arg_1532_6'] === 'function' ? engine['probeStatus']() : undefined,
+      selectedIndex: selectedIdx,
       stats: {
         ...Object.fromEntries(SESSION_KEYS.map(mapSessionEntry)),
         battles: session[IDX_SESSION_MATCHES],
@@ -617,7 +617,7 @@ function createAutoFarm(deps) {
     ticking = true;
     try {
       if (typeof engine['call_arg_1571_10'] === 'function') {
-        gamePhase = engine['_$d38631472831ee8c61ada5ce']();
+        gamePhase = engine['readGamePhase']();
       }
       if (gamePhase !== 0) {
         idleStart = 0;
@@ -626,8 +626,8 @@ function createAutoFarm(deps) {
           battle = null;
           joining = false;
           clearBattle();
-          if (gate['fn_2461']) gate['_$22320225cdd7c427d4b8d3cb'](3);
-          if (gate[5753]) gate['_$371edf41cefa490bf13678bf'](3);
+          if (gate['fn_2461']) gate['notifyRejected'](3);
+          if (gate[5753]) gate['releaseAlt'](3);
         }
         followAnchor = 0;
         gadgetWindow = 0;
@@ -639,7 +639,7 @@ function createAutoFarm(deps) {
           && now >= nextRetryAt
           && typeof engine[6028] === 'function') {
           nextRetryAt = now + Math.min(RETRY_BACKOFF_MAX_MS, RETRY_BACKOFF_BASE_MS * Math.pow(RETRY_BACKOFF_MAX_EXP, Math.min(RETRY_BACKOFF_MAX_EXP, ++retryCount)));
-          if (engine['_$c9a9e1a7599900ccda418b62']()) {
+          if (engine['startBattle']()) {
             retryOkCount++;
             lastRetryOkAt = now;
           }
@@ -649,8 +649,8 @@ function createAutoFarm(deps) {
       inBattleSince = 0;
       if (!idleStart) idleStart = now;
       if (now - idleStart >= 60000) retryCount = 0;
-      var freshBattle = typeof engine['call_arg_1571_9'] === 'function' ? engine['_$4de9456cc438a21076dea802']() : false;
-      var anyBattle = freshBattle || engine['_$4cb26d224db7394fc9cd96ef']();
+      var freshBattle = typeof engine['call_arg_1571_9'] === 'function' ? engine['isFreshBattle']() : false;
+      var anyBattle = freshBattle || engine['isInBattle']();
       if (freshBattle || anyBattle) {
         if (joining) {
           reconnected = true;
@@ -667,7 +667,7 @@ function createAutoFarm(deps) {
             && options[IDX_OPTIONS_AUTO_RESTART]
             && now - lastRetryOkAt >= 300) {
             lastRetryOkAt = now;
-            engine['_$fe75ec1a10bd4566217717e6']();
+            engine['useSuper']();
           }
           return;
         }
@@ -691,7 +691,7 @@ function createAutoFarm(deps) {
             }
           }
         } else {
-          pendingResult = deps[6029]['_$0cb1e6e12110cb6253361dd5']();
+          pendingResult = deps[6029]['readPendingResult']();
         }
       }
       if (pendingResult === true && !hasResult) {
@@ -708,13 +708,13 @@ function createAutoFarm(deps) {
         if (options[IDX_OPTIONS_AUTO_START]
           && options[IDX_OPTIONS_AUTO_RESTART]
           && typeof engine[6030] === 'function'
-          && engine['_$bfb17577a7d7ce39f624c757']()) {
+          && engine['canUseGadget']()) {
           if (!lastGadgetAt) lastGadgetAt = now;
           if (now - lastGadgetAt >= 400
             && now - lastSuperAt >= 1500
             && typeof engine['call_arg_1571_7'] === 'function') {
             lastSuperAt = now;
-            engine['_$60894cda100942d3c8f19083']();
+            engine['useGadget']();
           }
           return;
         }
@@ -743,7 +743,7 @@ function createAutoFarm(deps) {
   }
 
   function menuTick(now) {
-    if (!engine['_$4cb26d224db7394fc9cd96ef']()) {
+    if (!engine['isInBattle']()) {
       battleSince = 0;
       setReason(reconnected ? REASON_WAITING_RESULT : REASON_WAITING_HOME);
       return;
@@ -761,7 +761,7 @@ function createAutoFarm(deps) {
     }
     var canSelectSlot = typeof engine['call_arg_1571_12'] === 'function';
     if (canSelectSlot) {
-      selectBrawler(engine['_$3da9401690a091035152af16']());
+      selectBrawler(engine['readOwnSlotIndex']());
     }
     var current = brawlers.find(findCurrentEntry);
     var pick = pickBrawler(brawlers, options, selectedIdx);
@@ -785,7 +785,7 @@ function createAutoFarm(deps) {
         && options[IDX_OPTIONS_AUTO_RESTART]
         && session[IDX_SESSION_MATCHES] === 0) {
         if (now < gadgetWindow || now - lastSuperAt < 700) return;
-        if (engine['_$6975f2a66b3886417ebe1eb1']()) {
+        if (engine['canStartBattle']()) {
           lastSuperAt = now;
           gadgetWindow = now + 10000;
           setReason(REASON_MATCHMAKING);
@@ -805,7 +805,7 @@ function createAutoFarm(deps) {
         return;
       }
       lastSuperAt = now;
-      if (!engine['_$0a4631483a85e4a76340aef1'](pick[REC_SLOT_ID])) {
+      if (!engine['selectBrawler'](pick[REC_SLOT_ID])) {
         setReason(REASON_SELECT_RETRY);
         return;
       }
@@ -823,7 +823,7 @@ function createAutoFarm(deps) {
       && options[IDX_OPTIONS_AUTO_RESTART]
       && session[IDX_SESSION_MATCHES] === 0) {
       if (now < gadgetWindow || now - lastSuperAt < 700) return;
-      if (engine['_$6975f2a66b3886417ebe1eb1']()) {
+      if (engine['canStartBattle']()) {
         lastSuperAt = now;
         gadgetWindow = now + 10000;
         setReason(REASON_MATCHMAKING);
@@ -845,7 +845,7 @@ function createAutoFarm(deps) {
       spawnAnchor = [slotInfo[REC_OWN_X], slotInfo[REC_OWN_Y], now];
     }
     if ((skipInFlight && now - spawnAnchor[2] > RESULT_ANCHOR_MS) || now - followAnchor > FOLLOW_DELAY_MS) {
-      if (gate['call_arg_754_34'] || gate['_$65b3440634fedfa37cf93dc8']()) return;
+      if (gate['call_arg_754_34'] || gate['isLockedProbe']()) return;
       skipResults(battle, now);
       followTarget = null;
       followTargetId = null;
@@ -865,7 +865,7 @@ function createAutoFarm(deps) {
       || slotInfo['call_arg_271_4']) {
       return;
     }
-    if (gate['call_arg_754_34'] || gate['_$65b3440634fedfa37cf93dc8']()) return;
+    if (gate['call_arg_754_34'] || gate['isLockedProbe']()) return;
     if ((slotInfo['capture_2389'] || []).some(isEnemyAlive) || (slotInfo[2791] || []).length) return;
     if ((slotInfo[2730] || []).some(isEnemyInSlot)) return;
     followAnchor = now;
@@ -885,8 +885,8 @@ function createAutoFarm(deps) {
   function processBattleResult(battle, now) {
     var slotInfo = battle[REC_SLOT_INFO];
     if (!slotInfo || slotInfo['fn_1841'] === false || slotInfo[REC_ENTITY_HP] <= 0) return undefined;
-    if (gate['call_arg_754_34'] && typeof gate['_$65b3440634fedfa37cf93dc8'] === 'function' && gate['_$65b3440634fedfa37cf93dc8']()) return undefined;
-    var view = typeof engine['_$4c25a9d3665c3d44671a6b7b'] === 'function' ? engine['_$4c25a9d3665c3d44671a6b7b'](3) : undefined;
+    if (gate['call_arg_754_34'] && typeof gate['isLockedProbe'] === 'function' && gate['isLockedProbe']()) return undefined;
+    var view = typeof engine['readBattleView'] === 'function' ? engine['readBattleView'](3) : undefined;
     if (!view) return undefined;
     runBattlePlan(battle, view, now);
     return undefined;
@@ -914,23 +914,23 @@ function createAutoFarm(deps) {
 
   function cleanup() {
     if (inBattleSince && battle && Date.now() - battle[REC_SLOT_INFO][REC_OWN_Y] < 500
-      && !engine['_$4cb26d224db7394fc9cd96ef']()
-      && !(engine['call_arg_1571_9'] && engine['_$4de9456cc438a21076dea802']())) {
+      && !engine['isInBattle']()
+      && !(engine['call_arg_1571_9'] && engine['isFreshBattle']())) {
       skipResults(battle, Date.now());
     }
     if (hook) {
       hook();
       hook = null;
     }
-    engine['_$f9114d7e00ca74bd99fe3676']();
+    engine['reset']();
     if (deps[6029] && typeof deps[6029]['call_arg_1571_5'] === 'function') {
-      deps[6029]['_$514b2e44ae09fa0ecd67bd1d'](false);
+      deps[6029]['detach'](false);
     }
     if (deps['call_arg_118_14']['fn_2461']) {
-      deps['call_arg_118_14']['_$22320225cdd7c427d4b8d3cb'](3);
+      deps['call_arg_118_14']['notifyRejected'](3);
     }
     if (deps['call_arg_118_14'][5753]) {
-      deps['call_arg_118_14']['_$371edf41cefa490bf13678bf'](3);
+      deps['call_arg_118_14']['releaseAlt'](3);
     }
     battle = null;
     inBattleSince = false;
@@ -1014,10 +1014,10 @@ function createAutoFarm(deps) {
   var gate = deps['call_arg_118_14'];
   var ctx = createEngineContext({
     native: base,
-    _$82d621c353e8b511991868b6: gate,
-    _$d59c5e089e027c280678dbe9: getOptionsSnapshot,
+    gate: gate,
+    options: getOptionsSnapshot,
   });
-  var throttle = createRateTracker({ _$959ddfbde0867dbe30d9b573: 2, _$18bf150356dd129b8567a861: 1000 });
+  var throttle = createRateTracker({ mode: 2, capacity: 1000 });
   var session = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: -1, 6: -1, 7: '', 8: 0, length: 9 };
   var farm = { 0: 0, 1: 0, 2: null, 3: 0, 4: 0, 5: [0, 0, 0, 0, 0, 0, 0, 0, 0], length: 6 };
   var options = normalizeOptionsFrom(deps[6037]);
