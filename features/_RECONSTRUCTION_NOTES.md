@@ -52,6 +52,11 @@ header during reconstruction and are preserved in the git history of this repo
   all `_$hash` keys renamed to recovered/positional names — see the full
   offsets map below. Unattributed slots (13/14/15/25, plus behavior-named
   gates) carry positional names and are documented with their evidence level.
+- `ball.js` — COMPLETE for the goal/ball_assist/ball_trajectory core
+  (fn_109 runtime: factory + 16-method API + state model + shot pipeline +
+  fn_720 bounce-trajectory solver, ~28 functions byte-verified). The
+  planner/solver layer and mortis_chain internals remain documented
+  boundaries (see the PENDING list in the ball section below).
 
 ## Hash → name map (autospin)
 
@@ -398,6 +403,285 @@ built as 'Battle ' + Object.keys(OFFSETS)[index].
 - Conventions corrections verified this session: @stock[catch] = 'length',
   @stock[cause] = 'next', @stock[extends] = 'value', @stock[true] = 'return',
   #54 = 'done', #125 = Symbol.iterator, #31 = 'prototype', #126 = 'call'
+
+## ball / goal / ball_trajectory (features/ball.js) — session 4
+
+Real module subtree: fn_109 [#1329] (parent fn_488) + 63 descendants,
+plus standalone fn_720 [#1323] (parent fn_488, the bounce-trajectory
+solver). The runtime serves menu features GOAL (10), BALL ASSIST (11),
+BALL_TRAJECTORY (12) and MORTIS_CHAIN (15) — the registry group
+`fn_109.var2246 = [10, 11, 12, 15]`, state map
+`Object.fromEntries([10,11,12,15].map(k => [k, false]))` (fn_788).
+
+### CRITICAL tooling discovery — atom operand decoding (session 4)
+
+The disasm was generated with a stock-tagged reader while the real opcode
+atom operands are RAW 4-byte indexes. All atom labels printed by the
+disasm are therefore WRONG and must be recomputed:
+- `#N` → raw v = 2N+1
+- `@stock[k]` → raw v = 2 × bellard_index(k)
+- `@'name'` → raw v = 2 × (243 + file_atoms.index(name)) (module atoms)
+Real atom string: v < 243 → `stock_atoms[v]` (atoms_main_qbc.json — this
+list is the TRUE runtime stock table); v ≥ 243 → `file_atoms[v-243]`.
+Verified by direct bytecode probes: `put_field 'length'` raw=50,
+`#54`→raw 109='done', `#31`→raw 63='prototype', `#1420`→raw 2841='base',
+`#5531`→raw 11063='_$8909080e7460c4c9d13103f4' (scanBattle),
+`#5607`→raw 11215='_$6c469dfb2ddb1688dfd11754' (isLocked),
+`@'fn_2461'`→raw 11218='_$22320225cdd7c427d4b8d3cb' (notifyRejected).
+This retroactively explains the old "@stock[catch]='length'" mystery —
+the old "divergent stock table" theory was an artifact of the >>1 bug.
+Tooling: scripts/resolve_atoms.py regenerates atom-corrected views
+(`fn_*_atom.txt`); scripts/resolve_var.py resolves get_var/put_var
+through closure chains; scripts/calibrate_atoms.py dumps raw operands.
+
+Closure convention for this subtree (verified byte-exact on fn_29's 8
+writes): `get_var/put_var N` = parent's loc_N directly (no off-by-one;
+arg1 is not in the capture table). Each function's table ends with
+per-function globals at varying positions (Date, undefined, String,
+Number, Object, Error, Map, Set, native_import_1 = NativeFunction,
+native_import_5 = ptr) — resolve via the table tail, not fixed indexes.
+
+### fn_109 factory state model (loc_N → name)
+
+- loc_2 = fn_2166 buildGoalRecord | loc_3 = fn_2230 executeShot
+- loc_6 = fn_68 (mortis dispatch, pending) | loc_9 = fn_904 isUsablePointer
+- loc_10 = candidates array (reset to [] by fn_29) | loc_11 = fn_918 ensureNative
+- loc_13 = counterA (dedup) | loc_15 = simNative binding
+- loc_17 = fn_1349 warmNatives | loc_19 = fn_2446 refreshGlobalFlags
+- loc_20 = fn_1393 ballDispatch | loc_21 = fn_2597 loadBattleState
+- loc_22 = trickshotMode code (0/1/2/4 observed) | loc_24 = ptr(deps.base)
+- loc_25 = fn_931 dispose | loc_26 = fn_1906 refreshPlan
+- loc_27 = lastEntityRead | loc_29 = tracker (fn_260())
+- loc_30 = fn_293 getNative | loc_31 = fn_1836 getTrickshotStatus
+- loc_32 = actorCache (Map) | loc_33 = fn_822 buildShot
+- loc_34 = fn_2620 readBallRecord | loc_36 = cacheKey
+- loc_38 = paused (world._$318627662c00525b8396ba45 === true)
+- loc_41 = fn_1876 (mortis chain step, pending)
+- loc_43 = fn_29 resetBallState | loc_45 = lastMoveAt
+- loc_48 = ballScan record [range, radius, ballPtr, super, speed, travelType]
+- loc_49 = fn_1785 (pending) | loc_53 = fn_2209 (hook handler, pending)
+- loc_54 = fn_2202 (hook handler, pending) | loc_55 = lastTickAt
+- loc_56 = battleKey (String) | loc_57 = nativeCache []
+- loc_59 = shotStartedAt | loc_61 = simulations counter
+- loc_62 = disposed | loc_65 = lastPlan | loc_69 = snapshot cache
+- loc_77 = fn_1526 buildPlan | loc_78 = goalAnchor (written by fn_2166)
+- loc_79 = baseAccessor (deps.log || fn_1932)
+- loc_80 = ballRecord {gid,x,y,name:'BALL',radius:60}
+- loc_81 = notBefore (only ever 0) | loc_82 = fn_372 attachHook
+- loc_83 = fn_187 (pending) | loc_84 = lastError (String)
+- loc_86 = Map (fn_109-local) | loc_88 = fn_2699 (pending)
+- loc_92 = fn_401 detachHook | loc_94 = fn_2364 objective
+- loc_96 = fn_1544 (pending) | loc_97 = fn_623 scanBall
+- loc_98 = fn_505 setEnabled | loc_101 = fn_1919 aimRedirectAndFire
+- loc_103 = fn_2043 refreshHooks | loc_106 = COUNTER_KEYS
+- loc_107 = fn_554 aimAtGoal | loc_113 = features map
+- loc_115 = fn_861 executeGoalMove | loc_117 = activePlan
+- loc_118 = fn_2392 (pending) | loc_119 = inputGate (deps._$0f5ca3bf...)
+- loc_120 = interlock | loc_122 = fn_2046 isShotReady
+- loc_125 = resolvedNatives (Set) | loc_126 = goalRecord
+- loc_128 = seedPointer | loc_130 = ticked | loc_132 = fn_500 (pending)
+- loc_134 = trickshotModeValue (setMode target)
+- loc_136 = lastWriteAt | loc_138 = fn_2333 currentFlags
+- loc_141 = fn_1411 reportError | loc_142 = '' (reset by fn_1846)
+- loc_145 = values = Object.values(ballOffsets).concat([screen])
+- loc_146 = override | loc_147 = mark {x,y} | loc_148 = counters[9]
+- loc_149 = statusIndex | loc_150/160 = mortis buffers (fn_68)
+- loc_151 = fn_1544 target | loc_158 = fn_1166 followObjectivePath
+- loc_159 = fn_136 applySaved | loc_161 = fn_332 scanObjective
+- loc_162 = hooks Map | loc_163 = fn_2205 tick | loc_164 = fn_1846 resetBattleState
+- loc_165 = goalStats (written by fn_1876)
+
+### Ball offsets table order (fn_488 slot 1661, Object.values order)
+
+0 _$86578cf3ee4dbb337c25e5d4, 1 data, 2 gid, 3 x, 4 y,
+5 _$f33803e7a2d8cd64b7945591, 6 move, 7 input, 8 submit,
+9 alloc, 10 free, 11 native13 (_$d822d590a1067e5a255382d1), 12 fire,
+13 _$f0cfe3c418d3ef67623fc7d6, 14 _$49bef88083e83eba4bc2a4be,
+15 _$36c9da16e05d9dc5111ec366, 16 _$d298f2029d7de539082c3ee9,
+17 _$1c6175b2d53c1d69b670d037, 18 _$4d6d4a60e4a5389759de492f,
+19 _$9e278c039d62950d17415145, 20 _$e5410097bcd64d9564925463,
+21 _$36cc7bcdf8ddbfa91bd7b484, 22 aimX, 23 aimY,
+24 _$d5dafac663ccae0811d053ab (state byte), 25 _$b909e936a1f0b87d15cb0664,
+26 _$f6f834b1a5f06f06faecbff3, 27 _$1ed7166d1c007e02e104e85e, 28 screen.
+
+### API object (fn_109, bytecode push_const 182-202)
+
+| key | name | fn |
+|---|---|---|
+| `has` | hasFeature | fn_417 |
+| `_$1458b5e5e1ba5d16cc261b4d` | setEnabled | fn_505 |
+| `_$514b2e44ae09fa0ecd67bd1d` | setOverride | fn_111 |
+| `_$c6ca8052007e2c68b9ae8264` | applySaved | fn_136 |
+| `dispose` | dispose | fn_931 |
+| `objective` | objective | fn_2364 |
+| `_$bc76004c92d2d0c6739cb535` | followObjectivePath | fn_1166 |
+| `_$47f9b36ab3340267421e67eb` | aimAtGoal | fn_554 |
+| `_$b8a7ccdbc227265b239e0ecd` | aimRedirectAndFire | fn_1919 |
+| `tick` | tick | fn_2205 |
+| `_$e694ae8516d24dc416980e75` | executeShot | fn_2230 |
+| `_$b0d4194ac6ed30fa2e422965` | getTrickshotStatus | fn_1836 |
+| `_$6d69041b3aa94b9618079139` | refreshFlags | fn_2792 |
+| `_$da4ce6f628bcda383190531b` | resetBallState | fn_29 |
+| `_$e1e1c61271274185cae840f6` | setMode | fn_553 |
+| `_$814748ecc47856e7b144daa6` | getState | fn_2185 |
+
+### Ball runtime hash → name map (new this session)
+
+| hash | name | evidence |
+|---|---|---|
+| `_$0f5ca3bf508eb8602288884d` | inputGate (deps field) | reconfirmed from autospin |
+| `_$8909080e7460c4c9d13103f4` | inputGate.scanBattle(budget) | gate: required by fn_109 ctor |
+| `_$77f59e9cd494da780b769563` | inputGate.getActiveSlot | reconfirmed from aimbot |
+| `_$a0e27a7cb561024288852db2` | inputGate gate probe (flags, limit) | fn_2230 pre-fire gate |
+| `_$371edf41cefa490bf13678bf` | inputGate releaseAlt | fire/finally release |
+| `_$9b5fe44f7c935bfb890bcb65` | inputGate.angle | fn_1393 mode 53669 |
+| `_$6c469dfb2ddb1688dfd11754` | inputGate.isLocked | fn_1393 mode 53669 |
+| `_$22320225cdd7c427d4b8d3cb` | inputGate.notifyRejected | reconfirmed ×4 |
+| `_$f846c8d5ebac9d78eb10094e` | world (motion view) | reconfirmed from aimbot |
+| `_$528d9b3e2016a372636f303c` | world.counterA | dedup + freshness |
+| `_$318627662c00525b8396ba45` | world.paused (=== true) | reconfirmed |
+| `_$9b2f2ebaccfa50d0600446ce` | world.ownX | reconfirmed |
+| `_$ac68381d82cf0eedd9c6a20a` | world.ownY | reconfirmed |
+| `_$af0b510be1001a7fe0745937` | world.entities | reconfirmed |
+| `_$97f3931e41a39623e7fd15f6` | world.projectiles | fn_1526 spread #2 |
+| `_$26b6329ef32390aec0c3ddb2` | world field (pathfinder arg) | fn_2205 |
+| `_$b11b5e14c741fc4cdea61960` | motion.wallScan | reconfirmed |
+| `_$5cdf233d1f0533b803925e62` | world flag (=== false fails) | fn_2046/fn_1919 |
+| `_$9d4347156302d81acf9ba18e` | world flag (truthy required) | fn_2046 |
+| `_$4db7ddfaa51628503ec7c4a9` | tracker.path (5-arg) | fn_2205 |
+| `_$db1aebbcc3781e90ec4d0374` | world.raycast (6-arg) | fn_720 |
+| `_$f431d070cad79e4a094070ae` | world.blockedTest (3-arg) | fn_720 reflection |
+| `_$8aac275e9efd9df08bf4e497` | shot.samples (sim result) | fn_822/fn_1526 |
+| `_$7c3ed73d9ad0cba36b5f85d5` | shot.from {x,y} | fn_822 |
+| `_$1516bfd127113e7a34d79575` | plan.candidate (angle) | fn_1526/fn_1906/fn_720 |
+| `_$a5fa94f845791b9de23e2996` | plan.seedKey (String) | fn_1526/fn_1906 |
+| `_$c62c7d7675dd2c6e78448d06` | plan.ballKey (String) | fn_1526/fn_1906 |
+| `_$ad725bbc38340cfb658c63d7` | segment.fromX | fn_720 |
+| `_$787b254d2864fa8d7364ab20` | segment.fromY | fn_720 |
+| `_$4e7d619ede596809fcfe0943` | segment.toX | fn_720 |
+| `_$2232fa0c6e6ae79fefce1293` | segment.toY | fn_720 |
+| `_$0ff0e85e9f6fdf1ad94dbc96` | segment.hitWall | fn_720 |
+| `_$689dcf5e83dcbcc745bdd7c8` | segment.index | fn_720 |
+| `_$714df0306c0a460933d1027e` | trajectory.segments | fn_720 |
+| `_$e128c5e51c82801490c558f6` | trajectory.bounces | fn_720 |
+| `_$29994d6e8def9703d4199cf8` | trajectory.traveled | fn_720 |
+| `_$b332efb2c410f54ac71eb519` … `_$68e51a48152985c305e10cb0` | goalRecord cache-key fields | fn_2230 |
+| `_$58430fd8e1966f9f86da588d` | goalRecord field (aim target) | fn_554 |
+| `_$f56f9b43ac8287ccc401c21f` | ball record ptr field | fn_1393 mode 60920 |
+| `_$734363e3b20d0a80337163c3` | ball record super field | fn_1393 mode 60920 |
+| `_$0e3ac2d8132c986cec708e5b` | getState.override | fn_2185 |
+| `_$00048fca42ad884e02edbca3` | getState.goalStats | fn_2185 |
+| `_$c4ded82d77ca3ddba3c08633` | getState.actors | fn_2185 |
+| `_$9aaf7807f2beb73bf5bac405` | getState sub-object key | fn_2185 |
+| `_$a98a2cd19b0bb14864033c19` / `_$184d4b7cb933ff924596e975` | trickshot status fields | fn_2185 |
+| `_$d556cf8b61f8821e61fa2a87` | deps probe method | fn_1393 mode 53669 |
+
+### Verified pipeline (byte-verified this session)
+
+- fn_136 applySaved: disable all features → refreshHooks → resetBattleState
+- fn_29 resetBallState: candidates=[], cacheKey='', lastEntityRead=0,
+  trickshotMode=0, shotStartedAt=0, lastPlan/activePlan=null, candidateSeq=0
+- fn_332 scanObjective(now, provided?): disposed gate; motion = provided ??
+  inputGate.scanBattle(100); world/counterA sanity → resetBattleState;
+  String(motion.battle) !== battleKey → resetBattleState + store;
+  snapshot = motion; loadBattleState(motion, now)
+- fn_2597 loadBattleState: counterA dedup; counters[1]++;
+  ball = world.ball && isFinite(x/y); paused = (world.paused === true);
+  fn_1314 validateWorld gate → null-out; ballRecord = {gid:String, x, y,
+  name||'BALL', radius||60}; counters[2]++ (ballFinds); scan = fn_623;
+  goalRecord = fn_2166(motion, scan[3]); status: paused&&goal→1(goal),
+  ball→2(ball), goal→3(search), else 0(idle); mark updated accordingly;
+  no scan → goalRecord = ball.radius || 60
+- fn_2046 isShotReady: motion, features[11], paused, goalRecord, ballScan,
+  ownCharacter ptr; state byte VALUES[24] === 1; fn_293(19,'bool') !== scan[3];
+  world flag checks; freshness ≤180ms; world.ball; fn_761 battle alive;
+  scan[5] === 31 (travelType in-flight) && scan[4] > 0 (speed)
+- fn_822 buildShot: gates; lazy simNative = new NativeFunction(
+  VALUES[14], ['pointer'×3], [ptr,ptr,ptr,int,uint,int,float×6]);
+  ownX/ownY via VALUES[3]/[4]; shotX/Y = round(own + cos/sin(angle)·range);
+  sim(seed, ownChar, scan[2], 0, 2147483647, -1, ownX, ownY, 0, shotX,
+  shotY, 0) → [buffer, timeEnd, timeStart]; span = timeEnd-buffer
+  (.compare/.sub/.toInt32); span∈[24,1536], span%12===0; samples every
+  12 bytes ({x: readFloat, y: +4 readFloat}); returns {samples, x, y, from}
+- fn_1526 buildPlan: shot = buildShot; entities = [...world.entities,
+  ...world.projectiles]; plan = fn_2163(samples, goal, readBallRecord(scan),
+  entities); Object.assign(plan, {x, y, from, candidate: angle, at: now,
+  seedKey: String(seed), battle: String(battle), ballKey: String(gid),
+  super: scan[3]})
+- fn_1906 refreshPlan: identity checks (seedKey/battle/ballKey/super) +
+  180ms window → null; else rebuild with plan.candidate; requires .clear
+- fn_2230 executeShot: gates (disposed, features[11], interlock, 32ms);
+  (!isShotReady && !isUsablePointer(seed)) → reset + mode 1; cacheKey =
+  [battle, ballGid, scan[3], 4 goalRecord fields].join(':') → reset on
+  change; plan = activePlan ? refreshPlan : null; if !plan: candidates =
+  fn_2705(own, goal, fn_500(snapshot)); angle = candidates[++seq % len];
+  next = buildPlan → lastPlan/activePlan (requires .clear); !plan →
+  shotStartedAt=0, mode 4; plan → shotStartedAt ??= now, mode 2;
+  throttle gates (modeValue===1, ≥70ms since start, ≥500ms since last
+  write, now ≥ notBefore); getActiveSlot + validateSlot(slot) !== 5 gate;
+  gate probe (flags, 100); read aim VALUES[22]/[23] → write plan.x/y →
+  fire VALUES[12]('int',[ptr,ptr])(seed, ownCharacter) → counters[4]++
+  → finally restore aim, clear interlock, resetBallState, releaseGate
+- fn_1919 aimRedirectAndFire(context, x, y): scan gates + isFinite + 180ms;
+  ownCharacter state byte; hud = fn_293(28,'pointer',[])() (screen);
+  validate hud (ptr + scale>0); read aim → write round(x)/round(y) →
+  fire → restore → fired bookkeeping (lastWriteAt, counters[4]++)
+- fn_2205 tick: gates (disposed, ticked, !(goal||assist), 80ms);
+  seed update; counters[0]++; goal&&mark → tracker.path(ownPos, mark,
+  wallScan, world field, battle) → fn_861 executeGoalMove(motion, path,
+  now); catch → reportError; finally ticked = false
+- fn_2364 objective(arg): scanObjective(now, arg); mortis_chain enabled →
+  fn_1876(now, scan); catch → resetBattleState + reportError; finally
+  currentFlags()
+- fn_2043 refreshHooks: per-feature attach/detach — goal: hook 0 @ VALUES[11]
+  {onEnter fn_2714, onLeave fn_508}; assist: hook 1 @ VALUES[0]
+  {onEnter fn_1028}; trajectory: hook 2 @ VALUES[13] {onEnter fn_1795,
+  onLeave fn_377} + hook 3 @ VALUES[14] {onEnter fn_566, onLeave
+  fn_2475} (warms [14,15]); mortis: hook 4 @ VALUES[0] {onEnter fn_729}
+  + hook 5 @ VALUES[8] {onEnter ...}; detach = fn_401(key) per feature
+- fn_505 setEnabled: featureId validation, dispose guard, idempotence;
+  rollback on error; ball_assist → resetBallState + notifyRejected(5) +
+  warmNatives([12, 14, 10]); goal-enable/assist-toggle → scanObjective;
+  returns on
+- fn_1393 ballDispatch: mode 60920 = ball record reader; mode 54397 =
+  runtime snapshot {mode: STATUS[status], ball fields, ball, goal, paused,
+  mark, battle}; mode 53669 = shot-intent probe (override || angle() ||
+  isLocked || deps probe)
+- fn_720 ballComputeTrajectory(from, angle, budget, world, goal,
+  maxBounces=3): raycast + clamp(fn_370); per-segment goal test
+  (fn_696); reflection via 12-unit probes (flip cos/sin; corner case
+  |cos|≥|sin|); 1-unit escape step; returns {segments, goal, angle,
+  bounces, traveled}; exception → null
+
+### fn_488 helper slots used by the ball runtime (resolved)
+
+- slot 678 = fn_1875 featureId, slot 2246 = [10,11,12,15]
+- slot 1094 = [0..6] (INPUT_FLAGS identity), slot 849 = 5
+- slot 1631 = 11 (ball_assist), 1785 = 10 (goal), 1427 = 12 (trajectory)
+- slot 867 = ['idle','goal','ball','search'] (STATUS), slot 100 = [0..5]
+- slot 1661 = ball offsets frozen object, 2036 = fn_2163 solvePlan,
+  272 = fn_2705 genCandidates, 2308 = fn_1314 validateWorld,
+  2315 = fn_696 testGoalSegment, 717 = fn_370 clamp, 1266 = fn_2060
+  resolveNativeAddress, 2281 = fn_761 checkBattleAlive,
+  2379 = fn_1384 validateSlot, 2132 = fn_1617 normalizeMode,
+  101 = fn_2632 countEnabled, 1260 = fn_1660, 1540 = slot const (el),
+  1939/1138 = HUD ptr/scale offsets (el), 2237 = 4 (sample stride)
+- fn_260 createTracker: .reset() / .getState() / .path (5-arg) — the
+  trickshot tracker (pending deep-read)
+
+### PENDING (verified boundaries, deep read next session)
+
+fn_2163 solvePlan (4552 bclen — the trajectory-vs-entities planner, the
+largest single boundary), fn_2705 genCandidates (1656), fn_623 scanBall
+(1271 — Map/readPointer entity walk), fn_2166 buildGoalRecord (820),
+fn_861 executeGoalMove (1447 — writes counters[3] 'moves'), fn_554
+aimAtGoal (1130 — atan2 + goal._$58430fd8 + fn_2584 internals), fn_1166
+followObjectivePath (281), the hook handlers fn_2714/fn_508/fn_1028/
+fn_1795/fn_377/fn_566/fn_2475/fn_729, the mortis subtree (fn_1876,
+fn_68, fn_2446, fn_1544, fn_2209, fn_2202, fn_1785, fn_2392, fn_500,
+fn_187, fn_2699, fn_332-adjacent), fn_260 tracker internals, and the
+battle-input goal side: fn_1572 goal branch + fn_1754 (args[1]/[2]/[5]/[6]
+rewrite on activateWeapon, documented in the anti_afk offsets map).
 
 ## auto_farm (features/autofarm.js) — session 3
 
