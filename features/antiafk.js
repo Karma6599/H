@@ -33,11 +33,11 @@ const FEATURE_KEYS = [
 
 const KILLAURA = 4;
 const HOLD_TO_SHOOT = 5;
-const XRAY = 8;
-const GOAL = 9;
+const FOLLOW = 8;
+const XRAY = 9;
 const ANTI_AFK = 14;
 
-const INPUT_FEATURES = [KILLAURA, HOLD_TO_SHOOT, XRAY, GOAL, ANTI_AFK, 42];
+const INPUT_FEATURES = [KILLAURA, HOLD_TO_SHOOT, FOLLOW, XRAY, ANTI_AFK, 42];
 
 const INPUT_OFFSET_KEYS = [
   'mode',
