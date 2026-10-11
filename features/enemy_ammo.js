@@ -43,8 +43,6 @@ const AMMO_MODULE_SOURCE =
   'if(o976084e60a){o976084e60a[8]=1;o3a1e71579f++;}}\n' +
   '    unsigned od0192d38a0(void){return o3a1e71579f;}\n';
 
-const SYMBOL_COUNTER = '_$c9d06b0df5260490996cb343';
-const SYMBOL_READER = '_$0bf0a3f8d05643861da3114a';
 const SYMBOL_ENTER = 'enter';
 const SYMBOL_LEAVE = 'leave';
 
@@ -185,8 +183,6 @@ module.exports = {
   FEATURE_ID,
   COUNTER_KEYS,
   AMMO_MODULE_SOURCE,
-  SYMBOL_COUNTER,
-  SYMBOL_READER,
   SYMBOL_ENTER,
   SYMBOL_LEAVE,
   createEnemyAmmo,
