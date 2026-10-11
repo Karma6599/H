@@ -1036,3 +1036,7 @@ function createAutoFarm(deps) {
 
   return api;
 }
+
+module.exports = {
+  createAutoFarm,
+};

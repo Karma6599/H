@@ -1,32 +1,11 @@
 'use strict';
 
-// Chromatic Name — the "NATIVE BLING NAME" feature (id 24). Rewrites the
-// own player name at the native render boundary: a 24-slot one-shot
-// CModule trampoline matches the name pointer passed to the hooked
-// native text function and calls back into JavaScript, where the name is
-// rebuilt with the live chromatic palette (rainbow cycle or solid tint,
-// plus glow/opacity).
-//
-// Module shape (factory fn_313): 43 closure functions, the CModule
-// bridge below, and a 12-method API. The chromatic palette options live
-// in the settings under the color category: [mode, red, green, blue,
-// hue, cycleSeconds, saturation, brightness, opacity, glow] with the
-// mode enum [rainbow, solid].
-//
-// Reconstructed from the JirGear QuickJS bytecode (see chromatic_name.md
-// for the disassembly excerpts and the raw runtime keys).
-
-// Feature id 24 (fn_488 constant slot); registered under the plaintext
-// menu key 'CHROMATIC_NAME'.
 const FEATURE_ID = 24;
 
-// Menu labels (fn_488 strings table): row 62 is the feature, row 63 its
-// description. The factory also exposes the label pair for the page.
 const MENU_LABEL = 'NATIVE BLING NAME';
 const MENU_LABEL_RU = 'ПЕРЕЛИВ НИКА';
 const MENU_DESCRIPTION = 'Live colors and animation speed';
 
-// Options schema (fn_488 options category 8): index -> key.
 const OPTION_MODE = 0;
 const OPTION_RED = 1;
 const OPTION_GREEN = 2;
@@ -38,33 +17,20 @@ const OPTION_BRIGHTNESS = 7;
 const OPTION_OPACITY = 8;
 const OPTION_GLOW = 9;
 
-// Mode enum: 0 = rainbow (animated hue cycle), 1 = solid tint.
 const MODE_RAINBOW = 0;
 const MODE_SOLID = 1;
 
-// Palette ranges (menu writers clamp; hue wraps at 360).
 const HUE_MAX = 360;
 const CHANNEL_MIN = 0;
 const CHANNEL_MAX = 255;
 const OPACITY_MIN = 0;
 const OPACITY_MAX = 1;
 
-// The native marker string: the module allocates the C string
-// 'player_name' once and matches it against the first argument of the
-// hooked native function (the game's own name-render entry).
 const PLAYER_NAME_MARKER = 'player_name';
 
-// Trampoline capacity: the C slot table holds at most 24 one-shot
-// registrations, each matching up to 3 pointers.
 const TRAMPOLINE_SLOTS = 24;
 const TRAMPOLINE_POINTERS_PER_SLOT = 3;
 
-// The byte-recovered CModule source. It compiles to:
-//   slots[24]  — {a, b, c, id} one-shot registration records
-//   onHit(id, arg)  — exported JS callback (invoked once, then the
-//                     registration is consumed)
-//   invocationHandler — the Gum onEnter body that scans the slot table
-//                      for the current first argument pointer
 const TRAMPOLINE_C_SOURCE = `
   #include <gum/guminterceptor.h>
   typedef struct {void *a,*b,*c; unsigned id;} entry;
@@ -98,9 +64,6 @@ const TRAMPOLINE_C_SOURCE = `
   }
 `;
 
-// hslToRgb — the palette engine used by the rainbow mode. Mirrors the
-// standard hue wheel with saturation/lightness clamped to the option
-// ranges before conversion.
 function hslToRgb(h, s, l) {
   const hue = ((h % HUE_MAX) + HUE_MAX) % HUE_MAX;
   const sat = Math.min(1, Math.max(0, s));
@@ -130,8 +93,6 @@ function clampChannel(v, fallback) {
 }
 
 function normalizeColorOptions(raw) {
-  // Option writer for the color category. Rainbow mode keeps the hue
-  // cycle parameters; solid mode pins the RGB tint.
   const opts = raw || {};
   const mode = opts.mode === MODE_SOLID ? MODE_SOLID : MODE_RAINBOW;
   return {
@@ -161,14 +122,6 @@ function normalizeColorOptions(raw) {
 }
 
 function buildTrampolineBridge(CModule, NativeFunction, callbacks) {
-  // The CModule construction (byte-verified):
-  //   new CModule(source, { onHit: jsCallback, slots: backingBuffer })
-  // followed by the symbol pair table
-  //   [jsName, cName] x5 — onHit / slots / invocationHandler /
-  //                       allocSlot / freeSlot
-  // and the NativeFunction wrappers:
-  //   add    = allocSlot(ptr, ptr, ptr, uint) -> int
-  //   remove = freeSlot(uint) -> void
   const module = new CModule(TRAMPOLINE_C_SOURCE, callbacks, [
     ['onHit', 'oe1499f0f86'],
     ['slots', 'of7b083d525'],
@@ -187,19 +140,11 @@ function buildTrampolineBridge(CModule, NativeFunction, callbacks) {
 }
 
 function createChromaticRuntime(deps) {
-  // deps:
-  //   CModule / NativeFunction / Memory  the Frida natives
-  //   emitColor(id, text)  the rewrite hook (the 43-function body:
-  //                        palette selection + name rebuild + write-back)
-  //   features  the id -> enabled snapshot provider
-  //   settings  saved color options
   const options = normalizeColorOptions(deps.settings);
   const bridge = buildTrampolineBridge(
     deps.CModule, deps.NativeFunction, deps.callbacks
   );
 
-  // The marker buffer: allocated once, registered in the trampoline so
-  // the C handler fires when the game passes the own player name.
   const playerNameMarker = deps.Memory.allocUtf8String(PLAYER_NAME_MARKER);
 
   const state = {
@@ -212,9 +157,6 @@ function createChromaticRuntime(deps) {
   };
 
   function registerNamePointer(pointers, id) {
-    // One-shot registration of up to three name buffers (the stable
-    // pointer set of the current player name). Returns the slot index
-    // or -1 when the table is full.
     const a = pointers[0] || null;
     const b = pointers[1] || null;
     const c = pointers[2] || null;
@@ -226,9 +168,6 @@ function createChromaticRuntime(deps) {
   }
 
   function computeColor(nowMs) {
-    // Live palette: rainbow rotates the hue over the configured cycle,
-    // solid pins the tint. Glow multiplies the brightness in the emit
-    // path (handled by the native draw side).
     if (state.options.mode === MODE_SOLID) {
       return {
         r: state.options.red,
@@ -267,7 +206,6 @@ function createChromaticRuntime(deps) {
   }
 
   function getState() {
-    // fn_847 — the getState view (raw key map in the notes).
     return {
       enabled: state.enabled,
       options: {

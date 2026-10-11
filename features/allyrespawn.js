@@ -336,3 +336,8 @@ function createAllyRespawn(deps, logger) {
     getState,
   };
 }
+
+module.exports = {
+  featureId,
+  createAllyRespawn,
+};

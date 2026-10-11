@@ -1516,3 +1516,9 @@ function createAutoDodge(deps, logger) {
     },
   };
 }
+
+module.exports = {
+  canonicalBrawlerName,
+  normalizeDodgeOptions,
+  createAutoDodge,
+};

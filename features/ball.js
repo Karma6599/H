@@ -45,10 +45,6 @@ const BALL_PLAN_MS = 180;
 const BALL_SHOT_DELAY_MS = 70;
 const BALL_SHOT_COOLDOWN_MS = 500;
 
-// Trajectory overlay (feature 12) — the game runs its own ball-preview
-// simulation through the shared sim native (VALUES[14] = BALL_SHOT_NATIVE);
-// the hooks below capture those samples and extend them with the bounce
-// solver, then hand the polyline to the game's draw native (VALUES[15]).
 const BALL_TRAJECTORY_SYSTEM_NATIVE = 13;
 const BALL_DRAW_NATIVE = 15;
 const BALL_TRAJECTORY_CTX = 26;
@@ -63,7 +59,6 @@ const BALL_SAMPLE_Z = 8;
 const BALL_CTX_FLAG = 8;
 const BALL_RADIUS = 60;
 
-// Ball scan (fn_623) gates and memoization.
 const BALL_ACTOR_CACHE_MAX = 32;
 const BALL_RANGE_SCALE = 100;
 const BALL_RANGE_MIN = 0;
@@ -71,24 +66,17 @@ const BALL_RANGE_MAX = 20000;
 const BALL_RADIUS_CLAMP_MIN = 1;
 const BALL_RADIUS_CLAMP_MAX = 500;
 
-// Goal move (fn_861) throttle and manual-path constants.
 const BALL_MOVE_THROTTLE_MS = 70;
 const BALL_PATH_BUDGET_FLAG = 5;
 const BALL_PATH_BUDGET = 120;
 const BALL_MOVE_COMMAND_SIZE = 72;
 const BALL_MOVE_WARM_INDEXES = [7, 8, 9, 10, 6];
 
-// fn_2163 sample contract: 2..128 points per plan.
 const BALL_PLAN_MAX_SAMPLES = 128;
 
-// Candidate fan (fn_2705): 36 directions x amplitude tiers.
 const BALL_FAN_DIRECTIONS = 36;
 const BALL_FAN_TIERS = [0.25, 0.5, 0.75];
 
-// fn_109 factory index constants (byte-recovered from the constant
-// table: loc_7=6, loc_14=8, loc_28=10, loc_90=7, loc_102=17, loc_5=18,
-// loc_52=19, loc_68=21, loc_110=28, loc_133=9, loc_154=20) — the VALUES
-// slots used by the scan/plan helpers.
 const BALL_SCAN_OWN_PROBE = 19;
 const BALL_SCAN_HEADER = 18;
 const BALL_SCAN_ENTITY = 21;
@@ -111,10 +99,6 @@ function featureId(rawKey) {
 }
 
 function validateWorld(world, ball, paused) {
-  // fn_488 shared world gate (fn_2046/fn_1919 flags): the ready flag
-  // must not be false, the alive flag must be truthy, and a present
-  // ball record must carry finite coordinates. A paused world requires
-  // a ball to aim at.
   if (!world) return false;
   if (world.ready === false) return false;
   if (!world.alive) return false;
@@ -131,19 +115,11 @@ function ballClamp(v, lo, hi) {
 }
 
 function ballTestSegment(goal, x0, y0, x1, y1, traveled) {
-  // Pending boundary: fn_696 testGoalSegment (fn_488 slot 2315) — returns
-  // a hit record {x, y, traveled, overshoot} from the goal's mouth box
-  // (goalRecord mouthLeft/mouthLow/mouthHigh/isOpen fields). The draw
-  // pipeline always passes goal = null, so the null path below is exact;
-  // the full geometry test belongs to the goal/solvePlan session.
   if (!goal) return null;
   return undefined;
 }
 
 function ballComputeTrajectory(from, angle, budget, walls, goal, maxBounces) {
-  // fn_720 — bounce solver. `walls` is the motion snapshot's wall scanner
-  // (motion.wallScan): it supplies raycast, blockedTest and the projectile
-  // collision layer constant.
   const limit = maxBounces === undefined ? BALL_MAX_BOUNCES : maxBounces;
   let x = from.x;
   let y = from.y;
@@ -216,12 +192,6 @@ function ballComputeTrajectory(from, angle, budget, walls, goal, maxBounces) {
 }
 
 function ballProjectTrajectory(points, range, walls) {
-  // fn_1069 — extends the game's sampled ball path. Measures how much of
-  // the ball's travel range the sampled polyline already covers, then
-  // simulates the remainder from the last two samples' direction with the
-  // bounce solver. The first segment's start is pulled back by one ball
-  // radius so the drawn line begins at the ball's edge. Returns the segment
-  // list for drawing ([] when nothing can be projected).
   if (!Array.isArray(points) || points.length < 2 || !(range > 0)) {
     return [];
   }
@@ -261,10 +231,6 @@ function ballProjectTrajectory(points, range, walls) {
 }
 
 function genCandidates(own, record, snapshot) {
-  // fn_2705 — candidate fan: 36 directions x amplitude tiers
-  // 0.25/0.5/0.75 around the direct goal bearing (atan2/cos math). The
-  // per-candidate scorer fn_2479 is a documented boundary, so the fan
-  // below only fixes the shape; see ball_assist.md step 7.
   const fan = [];
   if (!own || !record) return fan;
   const bearing = Math.atan2(record.y - own.y, record.x - own.x);
@@ -278,12 +244,6 @@ function genCandidates(own, record, snapshot) {
 }
 
 function solvePlan(samples, record, ball, entities, flag) {
-  // fn_2163 — plan solver (4552 bclen, the largest documented boundary).
-  // Byte-verified input contract: samples must be an array of 2..128
-  // {x, y} points with |x|, |y| <= 100000; the output plan carries
-  // {clear, bounces, segments, length} from hypot segment math plus the
-  // goal mouth test. The entity-intersection scoring core is pending
-  // (see ball_assist.md "Remaining boundaries").
   if (!Array.isArray(samples) ||
       samples.length < 2 ||
       samples.length > BALL_PLAN_MAX_SAMPLES) {
@@ -316,8 +276,6 @@ function solvePlan(samples, record, ball, entities, flag) {
       plan.clear = true;
       break;
     }
-    // A wall bounce shows up in the native samples as a direction
-    // reversal between consecutive segments.
     if (i > 1 && dx * previousDx + dy * previousDy < 0) {
       plan.bounces++;
     }
@@ -328,11 +286,6 @@ function solvePlan(samples, record, ball, entities, flag) {
 }
 
 function createTracker(options) {
-  // fn_260 — trickshot tracker factory. Byte-verified: capacity clamp
-  // 32..2048 (default 1000), injectable clock, mode default 3; the API
-  // is {path, reset, getState}. The internal grid walker (fn_2860)
-  // stays a documented boundary — the provisional path below steps
-  // straight toward the objective within the path budget.
   const config = options || {};
   const capacity = Math.max(32, Math.min(2048, config.capacity || 1000));
   const clock = config.clock || Date.now;
@@ -386,14 +339,6 @@ function createTracker(options) {
 }
 
 function createBallRuntime(deps) {
-  // Runtime offset tables and shared readers arrive through deps so the
-  // module stays free of raw runtime offsets: ballOffsets is the 28-key
-  // VALUES table (aimX@22 / aimY@23 / fire@12 / state@24 / sim@14 /
-  // free@10), screen its 29th HUD entry; goalIndexes collects the
-  // fn_488 goal-layout slots (goal list, side flag, per-side goal X,
-  // travel type, move queue); ballReaders wraps the motion snapshot's
-  // shared function table (raw keys documented in ball_assist.md);
-  // goalTargetSolver is the fn_2584-family aim solver.
   const ballOffsets = deps.ballOffsets;
   const screen = deps.screen;
   const goalIndexes = deps.goalIndexes || {};
@@ -453,9 +398,6 @@ function createBallRuntime(deps) {
   let stateFlag = null;
   let stateSeq = 0;
   let simNative = null;
-  // Trajectory overlay state: per-thread [seed, samples] records handed
-  // from the system hook (fn_1795/fn_377) to the sim hook (fn_566/fn_2475),
-  // plus the lazily-allocated draw buffers (fn_68).
   const threadRecords = new Map();
   let drawPointsBuffer = null;
   let drawHeaderBuffer = null;
@@ -543,8 +485,6 @@ function createBallRuntime(deps) {
   }
 
   function resolveNativeAddress(base, offset, label) {
-    // fn_488 shared precheck: probe the resolved target before the
-    // NativeFunction cache claims it (label = the offset-table key).
     const target = base.add(offset);
     if (!isUsablePointer(target)) {
       throw new Error('Ball/Mortis native unavailable: ' + label);
@@ -553,13 +493,10 @@ function createBallRuntime(deps) {
   }
 
   function checkBattleAlive(target) {
-    // fn_761 — battle-alive probe (isShotReady gate).
     return isUsablePointer(target);
   }
 
   function validateSlot(slot) {
-    // fn_1384 — raw input-slot validation: maps a slot to its capability
-    // class; the ball/assist fire path requires class 5.
     if (!slot) return 0;
     if (typeof slot === 'object' && slot !== null) {
       return slot.id | 0;
@@ -568,8 +505,6 @@ function createBallRuntime(deps) {
   }
 
   function normalizeMode(mode) {
-    // fn_488 helper: clamp a trickshot mode selector into the
-    // TRICKSHOT_MODE_TABLE range (mode 1 arms the executeShot path).
     const value = Number(mode) | 0;
     if (value < 0) return 0;
     if (value > TRICKSHOT_MODE_TABLE.length - 1) {
@@ -591,7 +526,6 @@ function createBallRuntime(deps) {
   }
 
   function currentFlags() {
-    // fn_1393 mode 53669 — the live gate flags snapshot.
     return {
       override: override,
       angle: !!(inputGate.angle && inputGate.angle()),
@@ -602,25 +536,15 @@ function createBallRuntime(deps) {
   }
 
   function refreshGlobalFlags() {
-    // fn_488 global flag refresh (shared gate bookkeeping).
     return currentFlags();
   }
 
   function projectSnapshot(motion) {
-    // fn_500 — goal data reader (documented boundary: the two anchor
-    // fields are unresolved; raw keys in the decode dictionary). Passes
-    // the snapshot's goal data through when present.
     if (!motion || !motion.world) return null;
     return motion.world.goalData || null;
   }
 
   function scanBall(motion, battle) {
-    // fn_623 — memoized ball scan (byte-verified; ball_assist.md step 3):
-    // gates battle.data + (paused === true || usable own character),
-    // re-reads the own flag through the bool probe native (slot 19),
-    // memoizes per `String(battle.data) + ':' + Number(own)` in the
-    // capped actor cache, then walks the ball list (header native 18,
-    // entity native 21) and reads range/radius/speed/travelType.
     try {
       const battleData = battle ? battle.data : null;
       if (!isUsablePointer(battleData)) return null;
@@ -675,11 +599,6 @@ function createBallRuntime(deps) {
   }
 
   function buildGoalAnchor(goalData, ownPosition, layout) {
-    // fn_488 goal-record factory (loc_204) — documented boundary: the
-    // full mouth-box geometry belongs to the goal/solvePlan session. The
-    // provisional anchor below carries the byte-verified mouth fields
-    // consumed by executeShot and aimAtGoal (mouthLeft = x threshold,
-    // mouthLow/mouthHigh = y bounds, isOpen, aimTarget).
     return {
       key: null,
       goalSide: layout.goalSide,
@@ -696,11 +615,6 @@ function createBallRuntime(deps) {
   }
 
   function buildGoalRecord(motion, radius) {
-    // fn_2166 — memoized goal anchor (byte-verified; ball_assist.md
-    // step 4): goal data via fn_500, goal list off the battle pointer,
-    // side flag readU8, per-side goal X readS32, own position through
-    // the slot-20 int native, wall term from the wall scan, then the
-    // 8-part memo key rebuilds the anchor through the factory above.
     try {
       const goalData = projectSnapshot(motion);
       if (!goalData) return null;
@@ -743,11 +657,6 @@ function createBallRuntime(deps) {
   }
 
   function executeGoalMove(motion, path, now) {
-    // fn_861 — goal move executor (byte-verified; ball_assist.md
-    // step 11): 70 ms throttle, path-budget gate (flag 5, 120), then
-    // the motion's pathStep callback when it provides one, else a
-    // manual 72-byte movement command through the move controller
-    // queue (warmed natives [7, 8, 9, 10, 6]).
     if (now - lastMoveAt < BALL_MOVE_THROTTLE_MS) return false;
     if (!inputGate.checkPathBudget ||
         !inputGate.checkPathBudget(
@@ -780,12 +689,6 @@ function createBallRuntime(deps) {
   }
 
   function ballAssistFireOnEnter(args) {
-    // fn_1028 — assist fire hook (refreshHooks hook 1 @ VALUES[0],
-    // onEnter; byte-verified; ball_assist.md step 9): proceeds only
-    // with the assist enabled, no interlock and trickshot mode 0; the
-    // active slot must validate to class 5; the firing character must
-    // be the own character; the aim args are rewritten from the
-    // refreshed plan with Math.round and the trailing args zeroed.
     try {
       if (!features[BALL_ASSIST] || interlock || trickshotModeValue !== 0) {
         return;
@@ -815,10 +718,6 @@ function createBallRuntime(deps) {
     }
   }
 
-  // Hook handlers (refreshHooks attach points). The assist fire hook
-  // (fn_1028) is reconstructed above; the goal (fn_2714/fn_508) and
-  // mortis (fn_729/fn_569) handlers stay documented boundaries with
-  // their verified entry gates preserved.
   const ballHookHandlers = {
     assist: {
       onEnter: ballAssistFireOnEnter,
@@ -844,8 +743,6 @@ function createBallRuntime(deps) {
   };
 
   function attachHook(slot, index, handlers) {
-    // fn_2043 helper: attach an Interceptor at the VALUES offset and
-    // keep the handle in the per-feature hook map.
     const hook = Interceptor.attach(basePointer.add(values[index]), handlers);
     hooks.set(slot, hook);
     return hook;
@@ -864,10 +761,6 @@ function createBallRuntime(deps) {
   }
 
   function dispatchMortis(now, scan) {
-    // Mortis chain subtree (fn_1876 family) — documented boundary (see
-    // the PENDING list in _RECONSTRUCTION_NOTES.md). Verified entry
-    // contract: the dispatch only runs with the feature enabled and a
-    // scan snapshot in hand; the rewrite internals are pending.
     if (!features[BALL_MORTIS_CHAIN] || !scan) return undefined;
     return undefined;
   }
@@ -1293,12 +1186,6 @@ function createBallRuntime(deps) {
   }
 
   function trajectorySystemOnEnter(args) {
-    // fn_1795 — hook 2 onEnter on the trajectory system update native
-    // (VALUES[13]). Stashes the seed pointer for the whole runtime, holds
-    // assist shots for 500 ms while a trajectory pass runs, and — when the
-    // trajectory overlay is enabled — opens the per-thread record and
-    // clears the render contexts' visibility byte so the game recomputes
-    // its ball preview instead of reusing the stale frame.
     seedPointer = args[0];
     if (features[BALL_ASSIST]) {
       notBefore = Date.now() + BALL_TRAJECTORY_HOLD_MS;
@@ -1318,13 +1205,6 @@ function createBallRuntime(deps) {
   }
 
   function trajectorySystemOnLeave() {
-    // fn_377 — hook 2 onLeave. The game's trajectory pass has finished; if
-    // the sim hook captured a fresh sample list for this thread, extend it
-    // with the bounce solver and draw the projected path. The original's
-    // first gate is an opaque thread comparison (tail global vs the stored
-    // id — never equal); the undefined check below is the honest form.
-    // Ball assist takes precedence: when it is enabled the overlay stays
-    // off and the samples are only used for shot timing.
     const threadId = this.threadId;
     if (threadId === undefined) {
       return;
@@ -1353,12 +1233,6 @@ function createBallRuntime(deps) {
   }
 
   function trajectorySimOnEnter() {
-    // fn_566 — hook 3 onEnter on the shared trajectory simulation native
-    // (VALUES[14] = BALL_SHOT_NATIVE, the same one buildShot calls).
-    // Only intercepts calls in the x3 == 0 mode whose ball entity is
-    // active, and only while a trajectory pass is open on this thread.
-    // x8 is the arm64 indirect-result register: the game receives the
-    // sample buffer through it.
     if (this.context.x3.toInt32() !== 0) {
       return;
     }
@@ -1378,11 +1252,6 @@ function createBallRuntime(deps) {
   }
 
   function trajectorySimOnLeave() {
-    // fn_2475 — hook 3 onLeave. Reads the {start, end} buffer pointers the
-    // simulation produced and samples the 12-byte {x, y, z} floats into
-    // the thread record for the projector. Any non-finite or out-of-range
-    // coordinate rejects the whole pass (matches the original's early
-    // return, not a partial list).
     const record = this.record;
     const outBuffer = this.outBuffer;
     if (!record || !isUsablePointer(outBuffer)) {
@@ -1423,8 +1292,6 @@ function createBallRuntime(deps) {
   }
 
   function writeTrajectoryPoint(points, index, x, y) {
-    // fn_2794 — one 12-byte {x, y, 0} vertex in the draw buffer; the
-    // overlay polyline is 2D so the third float is forced to zero.
     const vertex = points.add(index * BALL_SIM_STRIDE);
     vertex.writeFloat(x);
     vertex.add(BALL_SAMPLE_STRIDE).writeFloat(y);
@@ -1432,10 +1299,6 @@ function createBallRuntime(deps) {
   }
 
   function drawTrajectory(seed, segments) {
-    // fn_68 — renders a trajectory polyline through the game's own draw
-    // native (VALUES[15]) and flips the render context's visibility byte.
-    // Buffers are allocated once and reused across draws. Returns true
-    // when the path was drawn.
     if (!segments.length || segments.length > BALL_DRAW_MAX_SEGMENTS ||
         !isUsablePointer(seed)) {
       return false;
@@ -1466,7 +1329,7 @@ function createBallRuntime(deps) {
       ['pointer', 'pointer', 'float', 'float', 'float'])(
       context, header, 100, 0, -1);
     context.add(BALL_CTX_FLAG).writeU8(1);
-    counters[5]++;  // trajectoryDraws
+    counters[5]++;
     return true;
   }
 
@@ -1544,10 +1407,6 @@ function createBallRuntime(deps) {
   }
 
   function refreshHooks() {
-    // fn_2043 — per-feature Interceptor attach/detach. The trajectory
-    // handlers (hooks 2 and 3) are reconstructed in this module; the goal,
-    // assist and mortis handlers still live behind the ballHookHandlers
-    // boundary (fn_2714/fn_508, fn_1028, fn_729/fn_569).
     if (features[BALL_GOAL] && !hooks.has(0)) {
       warmNatives([11]);
       attachHook(0, 11, {
@@ -1678,11 +1537,6 @@ function createBallRuntime(deps) {
   }
 
   function aimAtGoal(anchor, options) {
-    // fn_554 — aim at the goal (byte-verified; ball_assist.md step 10):
-    // budget clamp, fn_2584-family target solver (documented boundary —
-    // the goal anchor itself is the aim point without it), buildShot at
-    // the solved bearing, aim-target adjustment (isOpen ? 1 : -1) *
-    // (speed + 25), then the direct-shot gate plan.clear && bounces === 0.
     const now = Date.now();
     const motion = scanObjective(now);
     if (!motion || !motion.world) return null;
@@ -1728,9 +1582,6 @@ function createBallRuntime(deps) {
   }
 
   function followObjectivePath(target, angle, budget) {
-    // fn_1166 — follow the objective path (documented boundary, 281
-    // bclen: the full navigation walk). Verified contract: resolve the
-    // next path step through the tracker from the own position.
     const now = Date.now();
     const motion = scanObjective(now);
     if (!motion || !motion.world || !target) return null;
@@ -1779,3 +1630,12 @@ function createBallRuntime(deps) {
 
   return api;
 }
+
+module.exports = {
+  ballComputeTrajectory,
+  ballProjectTrajectory,
+  genCandidates,
+  solvePlan,
+  createTracker,
+  createBallRuntime,
+};

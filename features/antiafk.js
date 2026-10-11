@@ -161,3 +161,8 @@ function createAntiAfk(deps, logger) {
     getState,
   };
 }
+
+module.exports = {
+  featureId,
+  createAntiAfk,
+};

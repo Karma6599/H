@@ -697,3 +697,8 @@ function createAim(deps, logger, scanner, config) {
     getState,
   };
 }
+
+module.exports = {
+  isPointerUsable,
+  createAim,
+};

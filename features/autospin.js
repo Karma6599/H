@@ -392,3 +392,8 @@ function createAutoSpin(deps, logger) {
     getState,
   };
 }
+
+module.exports = {
+  clampSpeed,
+  createAutoSpin,
+};

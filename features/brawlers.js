@@ -1,38 +1,22 @@
 'use strict';
 
-// Brawler Database & Ban Lists — the identity + settings layer that the
-// other modules consume. There is no dedicated battle runtime: the
-// feature IS the data layer (per-brawler option overrides), fed by the
-// shared config factory (storage + catalog), the settings store below
-// (serialize/validate) and the menu page factories. Brawler name canon
-// comes from the bundled module utils/brawlerName.js.
-//
-// Reconstructed from the JirGear QuickJS bytecode (see brawlers.md for
-// the disassembly excerpts and the raw runtime keys).
-
 const SETTINGS_VERSION = 1;
 const MAX_BRAWLER_ENTRIES = 1024;
 const BRAWLER_ID_PATTERN = /^(0|[1-9]\d{0,5})$/;
 
-// Settings codec groups (fn_381): 2 = per-brawler settings arrays,
-// 23 = the global settings object. The codec itself is a documented
-// boundary — it arrives through deps as encode/decode.
 const SETTINGS_CODEC_GROUP_GLOBAL = 23;
 const SETTINGS_CODEC_GROUP_ENTRY = 2;
 
-// Identity resolution (fn_84).
 const IDENTITY_ERROR = 'Brawler identity function unavailable';
 const IDENTITY_PREFIX = 'Brawler identity ';
 const IDENTITY_NATIVE_OFFSET = 47701;
 const IDENTITY_RANGE_PROBE = 'r';
 
-// Grid renderer (fn_1767): layout constants and sprites.
 const GRID_LAYOUT = [330, 14, 10];
 const GRID_SPRITES = ['panel_background', 'border_top'];
 const LOADING_LABELS = ['LOADING BRAWLERS…', 'ЗАГРУЗКА БОЙЦОВ…'];
 const LANGUAGE_RU = 1795;
 
-// Menu labels (fn_488 strings table + page factories).
 const CATALOG_TITLE = 'BRAWLERS';
 const CATALOG_ANY = 'ANY ELIGIBLE BRAWLER';
 const CATALOG_LOCKED = 'LOCKED';
@@ -48,18 +32,11 @@ const LOBBY_HINTS = [
 const HUD_GLOBAL_LABEL = 'GLOBAL';
 const BAN_LIST_TITLE = 'AUTO DODGE — BAN LIST';
 
-// Auto Farm UI helper dependency (fn_1647 grid factory).
 const AUTO_FARM_UI_ERROR = 'Auto Farm UI helper missing';
 
-// Consumers — shared option slots.
-// auto_dodge options map: index 5 = ignoredBrawlerIds (ban list),
-// index 6 = aggressiveness.
 const DODGE_OPTION_BAN_LIST = 5;
 const DODGE_OPTION_AGGRESSIVENESS = 6;
 
-// auto_farm 12-slot options spec: [0] enabled, [1] selectedBrawlers,
-// [3] attack, [4] follow, [5] autoSwitch, [6] autoStart, [7] useSuper,
-// [8] useHyper, [9] useGadgets, [10] usePins.
 const FARM_OPTION_ENABLED = 0;
 const FARM_OPTION_SELECTED_BRAWLERS = 1;
 const FARM_OPTION_ATTACK = 3;
@@ -72,10 +49,6 @@ const FARM_OPTION_USE_GADGETS = 9;
 const FARM_OPTION_USE_PINS = 10;
 
 function getBrawlerIdentity(deps) {
-  // fn_84 — resolve the current brawler identity. The game-side probe
-  // must be a function; the address range is matched through
-  // Module.findRangeByAddress + the 'r' membership probe, and the
-  // entity is then read through the identity native at +47701.
   const probe = deps.identityProbe;
   if (typeof probe !== 'function') {
     throw new Error(IDENTITY_ERROR);
@@ -94,9 +67,6 @@ function getBrawlerIdentity(deps) {
 }
 
 function createBrawlerIdentityModule(deps) {
-  // fn_1535 — the identity module factory (462 bclen, 9-slot export
-  // table; the manager/homeMode/avatar accessors are fn_2533/fn_2242/
-  // fn_615/fn_2625). The export surface below keeps the verified slots.
   const manager = () => getBrawlerIdentity(deps);
   const homeMode = () => deps.homeMode;
   const avatar = () => deps.avatar;
@@ -110,8 +80,6 @@ function createBrawlerIdentityModule(deps) {
 }
 
 function mapBrawlerEntry(entry, encode) {
-  // fn_752 — byBrawler entry mapper: [id, name, settings] -> the keyed
-  // persisted record (codec group 2 for the settings array).
   return [String(entry[0]), {
     name: entry[1],
     settings: encode(SETTINGS_CODEC_GROUP_ENTRY, entry[2]),
@@ -119,9 +87,6 @@ function mapBrawlerEntry(entry, encode) {
 }
 
 function serializeBrawlerSettings(state, encode) {
-  // fn_2512 — state array -> storage object; null passes through
-  // untouched. state[0] version, state[1] autoSwitch, state[2] global
-  // block (codec group 23), state[3] byBrawler entries.
   if (!state) return null;
   return {
     version: state[0],
@@ -133,12 +98,6 @@ function serializeBrawlerSettings(state, encode) {
 }
 
 function validateBrawlerSettings(value, normalize) {
-  // fn_2227 — validate/deserialize the persisted blob. The global block
-  // must be a non-array object (else it is normalized through the
-  // defaults reader), autoSwitch is strict-equals true, and byBrawler is
-  // capped at 1024 entries keyed by numeric ids 0..999999 whose values
-  // are non-array objects carrying {name, settings[]} — invalid entries
-  // are dropped silently.
   if (!value || typeof value !== 'object') return null;
   let globalBlock = value.global;
   if (Array.isArray(globalBlock) || typeof globalBlock !== 'object') {
@@ -173,9 +132,6 @@ function validateBrawlerSettings(value, normalize) {
 }
 
 function createBrawlerStore(deps) {
-  // fn_2288 — the per-brawler settings store. State model (array, the
-  // fn_488 convention): [0] version, [1] autoSwitch, [2] global block,
-  // [3] byBrawler entries [id, name, settings[]].
   const encode = deps.encodeSettings;
   const decode = deps.decodeSettings;
   const normalize = deps.normalizeGlobal || ((value) => value || {});
@@ -205,8 +161,6 @@ function createBrawlerStore(deps) {
   }
 
   function getSettings(brawlerId, brawlerName) {
-    // Effective settings: the global block while autoSwitch is on, the
-    // per-brawler override otherwise (falling back to global).
     if (state[1]) return state[2];
     const entry = state[3].find(
       (candidate) => String(candidate[0]) === String(brawlerId));
@@ -253,11 +207,6 @@ function createBrawlerStore(deps) {
 }
 
 function createBrawlersPage(deps) {
-  // fn_1488 — the brawlers menu page factory. Children: fn_1942 the
-  // USE GLOBAL SETTINGS / ОБЩИЕ НАСТРОЙКИ per-brawler override switch
-  // (language check selects the label pair), fn_1492 the
-  // 'Waiting for brawler' empty state, and the sibling page builders
-  // fn_2011/fn_1967/fn_316.
   const store = deps.store;
   const language = deps.language;
   const views = deps.views || {};
@@ -302,12 +251,6 @@ function createBrawlersPage(deps) {
 }
 
 function createBrawlerGrid(deps) {
-  // fn_1647 — the brawler grid factory, shared with the Auto Farm UI:
-  // when the Auto Farm UI helper is absent the grid errors out with
-  // 'Auto Farm UI helper missing: …'. Child fn_1767 is the renderer:
-  // 'LOADING BRAWLERS…' / 'ЗАГРУЗКА БОЙЦОВ…' while the catalog loads,
-  // 330/14/10 layout, panel_background + border_top sprites, and the
-  // membership tests against the catalog list fields.
   const autoFarmUi = deps.autoFarmUiHelper;
   const language = deps.language;
   const sprites = deps.sprites || {};
@@ -333,8 +276,6 @@ function createBrawlerGrid(deps) {
     }
     const rows = [];
     for (const entry of catalog) {
-      // Catalog row states: ANY ELIGIBLE BRAWLER / LOCKED /
-      // NOT RELEASED; the any-eligible row carries a live closure.
       const state = entry.released === false
         ? CATALOG_NOT_RELEASED
         : entry.unlocked === false
@@ -363,8 +304,6 @@ function createBrawlerGrid(deps) {
 }
 
 function createBanListPicker(deps) {
-  // fn_887 — the AUTO DODGE — BAN LIST picker backed by the dodge
-  // options map slot 5 (ignoredBrawlerIds).
   const store = deps.store;
   const options = deps.dodgeOptions;
 
@@ -395,8 +334,6 @@ function createBanListPicker(deps) {
 }
 
 function renderHudStatus(views, language) {
-  // HUD status bar (neighbouring subtree): 'BRAWLER <name>' / 'GLOBAL'
-  // / 'Waiting for brawler', plus the lobby-refresh hint pair.
   const current = views.currentBrawler;
   const label = current
     ? 'BRAWLER ' + current.name
@@ -447,3 +384,15 @@ function createBrawlersFeature(deps) {
     getState: getState,
   };
 }
+
+module.exports = {
+  getBrawlerIdentity,
+  createBrawlerIdentityModule,
+  serializeBrawlerSettings,
+  validateBrawlerSettings,
+  createBrawlerStore,
+  createBrawlersPage,
+  createBrawlerGrid,
+  createBanListPicker,
+  createBrawlersFeature,
+};
